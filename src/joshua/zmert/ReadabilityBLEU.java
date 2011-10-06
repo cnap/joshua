@@ -79,10 +79,10 @@ public class ReadabilityBLEU extends BLEU {
 	// here's where you'd make additional room for statistics of your own
 	@Override
 	protected void initialize() {
-		metricName = "SIMP_BLEU";
+		metricName = "READ_BLEU";
 		toBeMinimized = false;
 		// adding 1 to the sufficient stats for regular BLEU - character-based compression requires extra stats
-		suffStatsCount = 2 * maxGramLength + 9; // need to +3 for syllables
+		suffStatsCount = 2 * maxGramLength + 6; // need to +3 for syllables
 		set_weightsArray();
 		set_maxNgramCounts();
 	}
@@ -161,16 +161,10 @@ public class ReadabilityBLEU extends BLEU {
 		// same as BLEU
 		stats[cand_words_len()] = candidate_words.length;
 		stats[ref_words_len()] = effLength(candidate_words.length, i);
-		// candidate character length
-		stats[cand_char_len()] = cand_str.length() - candidate_words.length + 1;
-		// reference character length
-		stats[ref_char_len()] = effLength(stats[cand_char_len()], i, true);
-		// source character length
 		//		System.out.println("1\t"+stats[src_char_len()]);
 		//		System.out.println("2\t"+srcSentences[i].length());
 		//		System.out.println("3\t"+srcWordCount[i]);
 		//		System.out.println("4\t"+i);
-		stats[src_char_len()] = srcSentences[i].length() - srcWordCount[i] + 1;
 		stats[src_words_len()] = srcWordCount[i];
 
 		// candidate total num syllables
@@ -184,21 +178,12 @@ public class ReadabilityBLEU extends BLEU {
 		return stats;
 	}
 
-	int cand_words_len() { return suffStatsCount - 9; }
-	int ref_words_len() { return suffStatsCount - 8; } // effective = reference
-	int cand_char_len() { return suffStatsCount - 7; }
-	int ref_char_len() { return suffStatsCount - 6; }
-	int src_char_len() { return suffStatsCount - 5; }
+	int cand_words_len() { return suffStatsCount - 6; }
+	int ref_words_len() { return suffStatsCount - 5; } // effective = reference
 	int ref_syl_len() { return suffStatsCount - 4; }
 	int cand_syl_len() { return suffStatsCount - 3; }
 	int src_syl_len() { return suffStatsCount - 2; }
-	//	int ref_tok_len() { return suffStatsCount - 1; }
 	int src_words_len() { return suffStatsCount - 1; }
-
-	@Override
-	public int effLength(int candLength, int i) {
-		return effLength(candLength, i, false);
-	}
 
 	public int effSyllables(int i) {
 		int shortestTotSylCount = Integer.MAX_VALUE;
@@ -226,9 +211,9 @@ public class ReadabilityBLEU extends BLEU {
 
 		double shortestAvgSylCount = Double.MAX_VALUE;
 
-		if (effLengthMethod == EffectiveLengthMethod.CLOSEST) {
-		}
-		if (effLengthMethod == EffectiveLengthMethod.SHORTEST){
+//		if (effLengthMethod == EffectiveLengthMethod.CLOSEST) {
+//		}
+//		if (effLengthMethod == EffectiveLengthMethod.SHORTEST){
 			for (int r = 0; r < refsPerSen; r++) {
 				//double thisRefTokLength = refWordCount[i][r];
 				int thisRefSylLength = totalNumSyllables(refSentences[i][r].split("\\s+"));
@@ -237,18 +222,18 @@ public class ReadabilityBLEU extends BLEU {
 					shortestTokCount = refWordCount[i][r];
 				}
 			}
-		}
+//		}
 		return shortestTokCount;
 	}
 
 	// hacked to be able to return character length upon request
-	public int effLength(int candLength, int i, boolean character_length) {
+	public int effLength(int candLength, int i) {
 		if (effLengthMethod == EffectiveLengthMethod.CLOSEST) {
 			int closestRefLength = Integer.MIN_VALUE;
 			int minDiff = Math.abs(candLength - closestRefLength);
 
 			for (int r = 0; r < refsPerSen; ++r) {
-				int nextRefLength = (character_length ? refSentences[i][r].length() - refWordCount[i][r] + 1 : refWordCount[i][r]);
+				int nextRefLength = refWordCount[i][r];
 				int nextDiff = Math.abs(candLength - nextRefLength);
 
 				if (nextDiff < minDiff) {
@@ -264,7 +249,7 @@ public class ReadabilityBLEU extends BLEU {
 			int shortestRefLength = Integer.MAX_VALUE;
 
 			for (int r = 0; r < refsPerSen; ++r) {
-				int nextRefLength = (character_length ? refSentences[i][r].length() - refWordCount[i][r] + 1 : refWordCount[i][r]);
+				int nextRefLength = refWordCount[i][r];
 				if (nextRefLength < shortestRefLength) {
 					shortestRefLength = nextRefLength;
 				}
@@ -351,16 +336,24 @@ public class ReadabilityBLEU extends BLEU {
 	}
 
 	public double readabilityScore(int numWords, int numSyllables) {
-		double d = 206.835 - 1.015 * numWords - 84.6 * numSyllables / numWords;
-		if (d <= 0) return 0.000001;
+		// GRADE LEVEL:
+		double d = 0.39*numWords + 11.8*numSyllables / numWords - 15.59;
+		//READABILITY EASE:
+		//double d = 206.835 - 1.015 * numWords - 84.6 * numSyllables / numWords;
+		if (d <= 0) return 0.1;
 		return d;
 	}
 
 	double getReadabilityPenalty(double fk_ratio) {
+	    //	    if (true) return fk_ratio;
 		if (fk_ratio > 1.0) {
-			return 1.0;
+		    			return 1.0;
 		}
-		return Math.exp(10 * (fk_ratio-1));
+		//return 0.0;
+		//		System.err.println(fk_ratio);
+		//		return Math.exp(fk_ratio-1);
+		if (true) return fk_ratio;
+		return Math.exp(10*(1-fk_ratio));
 		//TODO: not sure if this linear penalty is good enough
 		//		return 0.0;
 	}
