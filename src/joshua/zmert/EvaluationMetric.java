@@ -65,7 +65,8 @@ public abstract class EvaluationMetric
 		// the "WER" metric expects an options array of length 0
 		metricOptionCount.put("MRC_BLEU",4);
 		metricOptionCount.put("COMP_BLEU",5);
-		metricOptionCount.put("READ_BLEU",3); //READ_BLEU 4 CLOSEST path/to/source
+		metricOptionCount.put("GRADE_LEVEL",1); // this just expects a path to the source sentences
+
 	}
 
 	public static EvaluationMetric getMetric(String metricName, String[] metricOptions)
@@ -93,8 +94,8 @@ public abstract class EvaluationMetric
 		} else if (metricName.equals("COMP_BLEU")) {
 			retMetric = new CompressionBLEU(metricOptions);   // the "COMP_BLEU" metric corresponds to the CompressionBLEU class
 		}
-		else if (metricName.equals("READ_BLEU")) {
-			retMetric = new ReadabilityBLEU(metricOptions);
+		else if (metricName.equals("GRADE_LEVEL")) {
+			retMetric = new GradeLevelMetric(metricOptions);
 		}
 
 		return retMetric;
