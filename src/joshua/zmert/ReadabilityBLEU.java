@@ -19,7 +19,7 @@ public class ReadabilityBLEU extends BLEU {
 	private int[] srcWordCount;
 	DecimalFormat df = new DecimalFormat("#.###");
 	private String[][] refParses;
-
+    private double targetScore;
 	Pattern syllable = Pattern.compile("(^[aeiouy]*[aeiouy]+)"); // matches C*V+
 	Pattern silentE = Pattern.compile("^[aeiou]e$");
 
@@ -277,7 +277,7 @@ public class ReadabilityBLEU extends BLEU {
 
 		double c_len = stats[cand_words_len()];
 		double r_len = stats[ref_words_len()];
-		double readability_penalty = getReadabilityPenalty(fk_ratio);
+		double readability_penalty = getReadabilityPenalty(srcScore, candScore);
 
 		// this part matches BLEU
 		double correctGramCount, totalGramCount;
@@ -318,7 +318,7 @@ public class ReadabilityBLEU extends BLEU {
 		double candScore = readabilityScore(stats[cand_words_len()],stats[cand_syl_len()]);
 		double srcScore = readabilityScore(stats[src_words_len()],stats[src_syl_len()]);
 		double fk_ratio = candScore / srcScore;
-		double readability_penalty = getReadabilityPenalty(fk_ratio);
+		double readability_penalty = getReadabilityPenalty(srcScore,candScore);
 		if (oneLiner) {
 			System.out.print("SIMP_BLEU = " + df.format(score(stats)));
 			System.out.print(", CAND_score = "+df.format(candScore));
@@ -340,23 +340,39 @@ public class ReadabilityBLEU extends BLEU {
 		double d = 0.39*numWords + 11.8*numSyllables / numWords - 15.59;
 		//READABILITY EASE:
 		//double d = 206.835 - 1.015 * numWords - 84.6 * numSyllables / numWords;
-		if (d <= 0) return 0.1;
+		if (d < 0) return 0;
 		return d;
 	}
 
-	double getReadabilityPenalty(double fk_ratio) {
-	    //	    if (true) return fk_ratio;
-		if (fk_ratio > 1.0) {
-		    			return 1.0;
-		}
+    double getReadabilityPenalty(double srcScore,double candScore) {
+	// if the original sentence is MORE readable, return 0
+	if (srcScore < candScore) return 0.0;
+
+	// if the new sentence is more readable, return 1
+	if ( srcScore > candScore) 
+	    return 1.0;
+	// if they are the same level of readability, return 0
+	return 0;// candScore - srcScore;
+
+
+	//		if (read_diff > 1.0) return 1.0;
 		//return 0.0;
 		//		System.err.println(fk_ratio);
 		//		return Math.exp(fk_ratio-1);
-		if (true) return fk_ratio;
-		return Math.exp(10*(1-fk_ratio));
+	//	return Math.exp(read_diff);
 		//TODO: not sure if this linear penalty is good enough
 		//		return 0.0;
 	}
+
+    double getReadabilityPenalty(double srcScore,double candScore, boolean target) {
+	if (!target) {
+	    return getReadabilityPenalty(srcScore,candScore);
+	}
+	if (candScore > srcScore) return 0.0;
+	if (candScore <= targetScore) return 1.0;
+	return Math.exp(targetScore - candScore);
+    }
+
 
 	public int totalNumSyllables(String[] ss) {
 		int count = 0;
@@ -370,6 +386,14 @@ public class ReadabilityBLEU extends BLEU {
 		// for numbers, return number of digits. this may not be good!
 		//		if (! s.matches("[a-z]"))
 		//			return s.length();
+	    if (s.contains("-")) {
+		    String[] temp = s.split("-");
+		    int  count = 0;
+		    for (String t : temp) {
+			count+= numSyllables(t);
+		    }
+		    return count;
+		}
 		int count = 0;
 		Matcher m = syllable.matcher(s);
 		count = m.groupCount();
