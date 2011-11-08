@@ -66,7 +66,9 @@ public abstract class EvaluationMetric
 		metricOptionCount.put("MRC_BLEU",4);
 		metricOptionCount.put("COMP_BLEU",5);
 		metricOptionCount.put("GRADE_LEVEL",1); // this just expects a path to the source sentences
+		metricOptionCount.put("GL_BLEU",3); // this just expects a path to the source sentences
 
+		
 	}
 
 	public static EvaluationMetric getMetric(String metricName, String[] metricOptions)
@@ -93,10 +95,13 @@ public abstract class EvaluationMetric
 			retMetric = new MinimumRequiredChangeBLEU(metricOptions);   // the "MRC_BLEU" metric corresponds to the ParaphraseBLEU class
 		} else if (metricName.equals("COMP_BLEU")) {
 			retMetric = new CompressionBLEU(metricOptions);   // the "COMP_BLEU" metric corresponds to the CompressionBLEU class
-		}
-		else if (metricName.equals("GRADE_LEVEL")) {
+		} else if (metricName.equals("GRADE_LEVEL")) {
 			retMetric = new GradeLevelMetric(metricOptions);
+		} else if (metricName.equals("GL_BLEU")) {
+			retMetric = new GradeLevelBLEU(metricOptions);
 		}
+
+		
 
 		return retMetric;
 	}
