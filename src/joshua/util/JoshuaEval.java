@@ -218,6 +218,16 @@ line format:
 		
 		int suffStatsCount = evalMetric.get_suffStatsCount();
 		
+		if (metricName.equals("GL_BLEU")) {
+		    double sum_score = 0;
+		    for (int i = 0; i < numSentences; ++i) {
+			int[] stats = new int[suffStatsCount];
+			for (int s = 0; s < suffStatsCount; ++s) { stats[s] = SS[i][s]; }
+			sum_score+=evalMetric.score(stats);
+		    }
+		    System.out.println("AVERAGE "+metricName+" = "+(sum_score/numSentences));
+		    }
+		else {
 		int[] totStats = new int[suffStatsCount];
 		for (int s = 0; s < suffStatsCount; ++s) {
 			totStats[s] = 0;
@@ -227,6 +237,7 @@ line format:
 		}
 		
 		evalMetric.printDetailedScore_fromStats(totStats,false);
+		}
 		
 		if (verbose) {
 			println("");
