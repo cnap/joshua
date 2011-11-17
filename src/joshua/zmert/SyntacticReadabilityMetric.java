@@ -24,7 +24,7 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
     private final HashSet<String> CLAUSE_LABELS = new HashSet<String>(Arrays.asList("S,SBAR,SBARQ,SINV,SQ".split(",")));
     private static HashMap<String,String> stems;
     private static HashSet<String> BASIC_WORDS;
-   String basicFilePath = "research/simplification/data/be850";
+    String basicFilePath = "research/simplification/data/be850";
     String wordFrequencyFilePath = "research/simplification/data/word_frequencies";
     String grammarPath = "research/simplification/data/englishPCFG.ser.gz";
     private static SnowballStemmer stemmer;
@@ -67,7 +67,6 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 
     public SyntacticReadabilityMetric() {
 	super();
-	initialize();
     }
 
     public SyntacticReadabilityMetric(String[] options) {
@@ -102,9 +101,6 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 	wordFrequencyFilePath = "research/simplification/data/word_frequencies";
 	grammarPath = "research/simplification/data/englishPCFG.ser.gz";
 	String homeDir = System.getenv().get("HOME");
-	System.out.println(basicFilePath);
-	System.out.println(wordFrequencyFilePath);
-	System.out.println(grammarPath);
 	basicFilePath = homeDir +"/"+basicFilePath;
 	wordFrequencyFilePath = homeDir + "/" + wordFrequencyFilePath;
 	grammarPath = homeDir + "/" + grammarPath;	
@@ -138,7 +134,7 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 	    String line;
 	    String[] fields;
 	    while ( (line=br.readLine()) != null ) {
-		fields = line.split(" ||| ");
+		fields = line.split("\\|\\|\\|");
 		fields[0] = removeErroneousSpace(fields[0]);
 		parseMap.put(fields[0],fields[1]);
 	    }
@@ -169,6 +165,7 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 	parseMap.put(s,parseString);
 	return t;
     }
+
     private void loadBasicWords() throws IOException {
 	BASIC_WORDS = new HashSet<String>();
 	BufferedReader br = new BufferedReader(new FileReader(basicFilePath));
@@ -237,10 +234,16 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 	return norm;
     }
 
-    @Override
-	public int[] suffStats(String cand_str, int i) {
+    public int[] suffStats(String cand_str, int i) {
 	cand_str = removeErroneousSpace(cand_str);
 	Tree tree = parse(cand_str);
+	try {
+	if (i == numSentences -2) {
+	    parseWriter.close();
+	}
+	} catch(Exception e) {
+	    System.err.println("Error closing the file writer for "+ pathToParses);
+	}
 	int[] stats = new int[suffStatsCount];
 	int[] gl_stats = super.suffStats(cand_str,i);
 
