@@ -218,7 +218,7 @@ line format:
 		
 		int suffStatsCount = evalMetric.get_suffStatsCount();
 		
-		if (metricName.equals("GL_BLEU")) {
+		if (metricName.equals("GL_BLEU") || metricName.equals("GRADE_LEVEL") || metricName.equals("SYN_READ")) {
 		    double sum_score = 0;
 		    for (int i = 0; i < numSentences; ++i) {
 			int[] stats = new int[suffStatsCount];

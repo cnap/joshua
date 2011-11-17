@@ -65,9 +65,9 @@ public abstract class EvaluationMetric
 		// the "WER" metric expects an options array of length 0
 		metricOptionCount.put("MRC_BLEU",4);
 		metricOptionCount.put("COMP_BLEU",5);
-		metricOptionCount.put("GRADE_LEVEL",1); // this just expects a path to the source sentences
-		metricOptionCount.put("GL_BLEU",3); // this just expects a path to the source sentences
-
+		metricOptionCount.put("GRADE_LEVEL",0); // this just expects a path to the source sentences
+		metricOptionCount.put("GL_BLEU",3); // this expects the BLEU options and  a path to the source sentences
+		metricOptionCount.put("SYN_READ",0); // this just expects a path to the source sentences
 		
 	}
 
@@ -99,6 +99,9 @@ public abstract class EvaluationMetric
 			retMetric = new GradeLevelMetric(metricOptions);
 		} else if (metricName.equals("GL_BLEU")) {
 			retMetric = new GradeLevelBLEU(metricOptions);
+		}
+		else if (metricName.equals("SYN_READ")) {
+		    retMetric = new SyntacticReadabilityMetric(metricOptions);
 		}
 
 		

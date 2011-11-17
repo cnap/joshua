@@ -13,22 +13,26 @@ public class GradeLevelMetric extends EvaluationMetric {
 	private Pattern syllable = Pattern.compile("(^[aeiouy]*[aeiouy]+)"); // matches C*V+
 	private Pattern silentE = Pattern.compile("^[aeiou]e$");
 	private Pattern wordPattern = Pattern.compile("[a-zA-Z]+");
-	private double[] bleu_scores;
-	private final int CAND_TOKEN_LEN=0,CAND_WORD_LEN=1,CAND_SYLL_LEN=2,REF_TOKEN_LEN=3,REF_WORD_LEN=4,REF_SYLL_LEN=5,SRC_TOKEN_LEN=6,SRC_WORD_LEN=7,SRC_SYLL_LEN=8;
+	protected final int CAND_TOKEN_LEN=0;
+	protected final int CAND_SYLL_LEN=1;
+	private final int REF_TOKEN_LEN=2;
+	private final int REF_SYLL_LEN=3;
+	private final int SRC_TOKEN_LEN=4;
+	private final int SRC_SYLL_LEN=5;
 
 	public GradeLevelMetric() {
 		initialize();
 	}
 	public GradeLevelMetric(String[] options) {
 		initialize();
-		try {
-			loadSources(options[0]);
+		/*		try {
+		    loadSources(options[0]);
 		} catch (IOException e) {
 			System.err.println("Error loading the source sentences from "+options[0]);
 			e.printStackTrace();
 			System.exit(1);
 		}
-
+		*/
 	}
 
 	private void loadSources(String filepath) throws IOException {
@@ -46,7 +50,7 @@ public class GradeLevelMetric extends EvaluationMetric {
 	public void initialize() {
 		metricName = "GRADE_LEVEL";
 		toBeMinimized = true;
-		suffStatsCount = 9;
+		suffStatsCount = 6;
 	}
 
 	@Override
@@ -59,7 +63,7 @@ public class GradeLevelMetric extends EvaluationMetric {
 		int[] stats = new int[suffStatsCount];
 		String[] candidate_tokens;
 		String [] reference_tokens = refSentences[i][0].split("\\s+");
-		String [] source_tokens = srcSentences[i].split("\\s+");
+		//		String [] source_tokens = srcSentences[i].split("\\s+");
 
 		if (!cand_str.equals("")) candidate_tokens = cand_str.split("\\s+");
 		else candidate_tokens = new String[0];
@@ -73,28 +77,24 @@ public class GradeLevelMetric extends EvaluationMetric {
 		// token length
 		stats[CAND_TOKEN_LEN] = candidate_tokens.length;
 		stats[REF_TOKEN_LEN] = reference_tokens.length;
-		stats[SRC_TOKEN_LEN] = source_tokens.length;
+		//		stats[SRC_TOKEN_LEN] = source_tokens.length;
 
 		// syllable length
 		stats[CAND_SYLL_LEN] = countTotalSyllables(candidate_tokens); ///candidate_words.length;
-		stats[REF_SYLL_LEN] = countTotalSyllables(reference_tokens);;
-		stats[SRC_SYLL_LEN] = countTotalSyllables(source_tokens); ///refSentences[i][sourceReferenceIndex].split("\\s+").length;
-
-		// number of words (note: != number tokens)
-		stats[CAND_WORD_LEN] = countWords(candidate_tokens);
-		stats[REF_WORD_LEN] = countWords(reference_tokens);
-		stats[SRC_WORD_LEN] = countWords(source_tokens);
+		stats[REF_SYLL_LEN] = countTotalSyllables(reference_tokens);
+		//		stats[SRC_SYLL_LEN] = countTotalSyllables(source_tokens); ///refSentences[i][sourceReferenceIndex].split("\\s+").length;
+		
 		return stats;
 	}
 
-	private int countWords(String[] tokens) {
-		int i = 0;
-		for (String t : tokens) {
-			Matcher m = wordPattern.matcher(t);
-			if (m.find()) i++;
-		}
-		return i;
-	}
+//	private int countWords(String[] tokens) {
+//		int i = 0;
+//		for (String t : tokens) {
+//			Matcher m = wordPattern.matcher(t);
+//			if (m.find()) i++;
+//		}
+//		return i;
+//	}
 
 	public int countTotalSyllables(String[] ss) {
 		int count = 0;
@@ -115,24 +115,27 @@ public class GradeLevelMetric extends EvaluationMetric {
 		count = m.groupCount();
 		m = silentE.matcher(s);
 		if (m.find()) count--;
+		if (count <= 0) count = 1;
 		return count;
 	}
 
 	@Override
 	public double score(int[] stats) {
-		double candScore = gradeLevel(stats[CAND_WORD_LEN],stats[CAND_SYLL_LEN]);
-		double srcScore = gradeLevel(stats[SRC_WORD_LEN],stats[SRC_SYLL_LEN]);
-		double grade_level_ratio = candScore / srcScore;
+		double candScore = gradeLevel(stats[CAND_TOKEN_LEN],stats[CAND_SYLL_LEN]);
+//		double srcScore = gradeLevel(stats[SRC_TOKEN_LEN],stats[SRC_SYLL_LEN]);
+//
+//		double c_len = stats[CAND_TOKEN_LEN];
+//		double r_len = stats[REF_TOKEN_LEN];
 
-		double c_len = stats[CAND_TOKEN_LEN];
-		double r_len = stats[REF_TOKEN_LEN];
+//		double brevity_penalty = 1.0;
+//
+//		if (c_len < r_len)
+//			brevity_penalty = Math.exp(1 - (r_len / c_len));
 
-		double brevity_penalty = 1.0;
+		if (candScore > worstPossibleScore()) candScore = worstPossibleScore();
+		if (candScore < bestPossibleScore()) candScore = bestPossibleScore();
 
-		if (c_len < r_len)
-			brevity_penalty = Math.exp(1 - (r_len / c_len));
-
-		return grade_level_ratio / brevity_penalty;
+		return candScore;
 	}
 
 	public double gradeLevel(int numWords, int numSyllables) {
@@ -142,10 +145,10 @@ public class GradeLevelMetric extends EvaluationMetric {
 	@Override
 	public void printDetailedScore_fromStats(int[] stats, boolean oneLiner) {
 		DecimalFormat df = new DecimalFormat("#.###");
-		System.out.print("GRADE_LEVEL_RATIO = " + df.format(score(stats)));
-		System.out.print(", REF_grade = "+df.format(gradeLevel(stats[REF_WORD_LEN],stats[REF_SYLL_LEN])));
-		System.out.print(", CAND_grade = "+df.format(gradeLevel(stats[CAND_WORD_LEN],stats[CAND_SYLL_LEN])));
-		System.out.print(", SRC_grade = "+df.format(gradeLevel(stats[SRC_WORD_LEN],stats[SRC_SYLL_LEN])));
-		System.out.println();
+		System.out.print("GRADE_LEVEL = " + df.format(score(stats)));
+		System.out.print(", REF_grade = "+df.format(gradeLevel(stats[REF_TOKEN_LEN],stats[REF_SYLL_LEN])));
+		System.out.print(", CAND_grade = "+df.format(gradeLevel(stats[CAND_TOKEN_LEN],stats[CAND_SYLL_LEN])));
+		//		System.out.print(", SRC_grade = "+df.format(gradeLevel(stats[SRC_TOKEN_LEN],stats[SRC_SYLL_LEN])));
+				System.out.println();
 	}
 }
