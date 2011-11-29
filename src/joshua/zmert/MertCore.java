@@ -216,6 +216,7 @@ public class MertCore
 
 //  private int useDisk;
 
+    private HashSet<String> averageMetrics = new HashSet(Arrays.asList("GRADE_LEVEL,GL_BLEU,SYN_READ".split(",")));
   public MertCore()
   {
   }
@@ -1738,6 +1739,14 @@ i ||| words of candidate translation . ||| feat-1_val feat-2_val ... feat-numPar
     // sets numDocuments and docOfSentence[]
     docOfSentence = new int[numSentences];
 
+    if (averageMetrics.contains(metricName)) {
+	System.out.println(metricName+" in averageMetrics");
+	for (int i = 0; i < numSentences; ++i) docOfSentence[i] = i;
+	numDocuments = numSentences;
+	return;
+    }
+    else { System.out.println(metricName+" NOT in averageMetrics"); }
+	
     if (docInfoFileName == null) {
       for (int i = 0; i < numSentences; ++i) docOfSentence[i] = 0;
       numDocuments = 1;

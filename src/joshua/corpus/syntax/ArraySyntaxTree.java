@@ -291,13 +291,13 @@ public class ArraySyntaxTree implements SyntaxTree, Externalizable {
 	}
 	
 
-	@Override
+	
 	public int[] getTerminals() {
 		return getTerminals(0, terminals.size());
 	}
 	
 
-	@Override
+	
 	public int[] getTerminals(int from, int to) {
 		int[] span = new int[to - from];
 		for (int i=from; i<to; i++)

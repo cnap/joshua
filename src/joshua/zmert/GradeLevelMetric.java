@@ -50,7 +50,7 @@ public class GradeLevelMetric extends EvaluationMetric {
 	public void initialize() {
 		metricName = "GRADE_LEVEL";
 		toBeMinimized = true;
-		suffStatsCount = 6;
+		suffStatsCount = 4;
 	}
 
 	@Override
@@ -138,7 +138,7 @@ public class GradeLevelMetric extends EvaluationMetric {
 		return candScore;
 	}
 
-	public double gradeLevel(int numWords, int numSyllables) {
+	public static double gradeLevel(int numWords, int numSyllables) {
 		return 0.39 * numWords + 11.8 * numSyllables/numWords - 15.19;
 	}
 
