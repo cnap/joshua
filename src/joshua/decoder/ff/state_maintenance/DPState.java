@@ -18,9 +18,6 @@
 
 package joshua.decoder.ff.state_maintenance;
 
-import joshua.corpus.vocab.SymbolTable;
-
-
 /**
  * 
  * @author Zhifei Li, <zhifei.work@gmail.com>
@@ -28,5 +25,4 @@ import joshua.corpus.vocab.SymbolTable;
  */
 public interface DPState {
 	String getSignature(boolean forceRecompute);
-	String getSignature(SymbolTable symbolTable, boolean forceRecompute);
 }

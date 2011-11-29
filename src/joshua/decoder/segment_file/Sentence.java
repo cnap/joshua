@@ -18,16 +18,17 @@
 
 package joshua.decoder.segment_file;
 
-import joshua.decoder.JoshuaDecoder;
-import joshua.util.Regex;
-import joshua.lattice.Lattice;
-import joshua.corpus.syntax.SyntaxTree;
-// import joshua.corpus.suffix_array.Pattern;
-
-import java.util.List;
 import java.util.LinkedList;
-import java.util.regex.Pattern;
+import java.util.List;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import joshua.corpus.Vocabulary;
+import joshua.corpus.syntax.SyntaxTree;
+import joshua.decoder.DecoderThread;
+import joshua.lattice.Lattice;
+import joshua.util.Regex;
 
 /**
  * This class represents a basic input sentence.  A sentence is a
@@ -42,6 +43,9 @@ import java.util.regex.Matcher;
 
 public class Sentence {
 
+	private static final Logger logger =
+			Logger.getLogger(Sentence.class.getName());
+	
     /*
      * The distinction between sequenceId and id is important.  The
      * former is the identifier assigned by the input handler; these
@@ -99,19 +103,15 @@ public class Sentence {
     }
 
     public int[] int_sentence() {
-        return JoshuaDecoder.symbolTable.getIDs(sentence());
+        return Vocabulary.addAll(sentence());
     }
 
     public List<ConstraintSpan> constraints() {
         return this.constraints;
     }
 
-    public joshua.corpus.suffix_array.Pattern pattern() {
-        return new joshua.corpus.suffix_array.Pattern(JoshuaDecoder.symbolTable, int_sentence());
-    }
-
-    public Lattice lattice() {
-        return Lattice.createLattice(int_sentence());
+    public Lattice<Integer> intLattice() {
+        return Lattice.createIntLattice(int_sentence());
     }
 
     public SyntaxTree syntax_tree() {

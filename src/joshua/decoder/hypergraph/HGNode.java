@@ -17,17 +17,17 @@
  */
 package joshua.decoder.hypergraph;
 
-import joshua.decoder.chart_parser.Prunable;
-import joshua.decoder.ff.state_maintenance.DPState;
-
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.logging.Level;
+
+import joshua.decoder.chart_parser.Prunable;
+import joshua.decoder.ff.state_maintenance.DPState;
 
 /**
  * this class implement Hypergraph node (i.e., HGNode); also known
@@ -53,7 +53,7 @@ public class HGNode implements Prunable<HGNode> {
 	
 
 	// the key is the state id; remember the state required by each model, for example, edge-ngrams for LM model
-	HashMap<Integer,DPState> dpStates;
+	TreeMap<Integer,DPState> dpStates;
 	
 	
 	//============== auxiluary variables, no need to store on disk
@@ -71,7 +71,7 @@ public class HGNode implements Prunable<HGNode> {
 // Constructors
 //===============================================================
 
-	public HGNode(int i, int j, int lhs, HashMap<Integer,DPState> dpStates, HyperEdge initHyperedge, double estTotalLogP) {
+	public HGNode(int i, int j, int lhs, TreeMap<Integer,DPState> dpStates, HyperEdge initHyperedge, double estTotalLogP) {
 		this.i   = i;
 		this.j   = j;
 		this.lhs = lhs;
@@ -82,7 +82,7 @@ public class HGNode implements Prunable<HGNode> {
 	
 	
 	//used by disk hg
-	public HGNode(int i, int j, int lhs, List<HyperEdge> hyperedges, HyperEdge bestHyperedge, HashMap<Integer,DPState> states) {
+	public HGNode(int i, int j, int lhs, List<HyperEdge> hyperedges, HyperEdge bestHyperedge, TreeMap<Integer,DPState> states) {
 		this.i   = i;
 		this.j   = j;
 		this.lhs = lhs;
@@ -118,7 +118,7 @@ public class HGNode implements Prunable<HGNode> {
 	}
 	
 	
-	public HashMap<Integer,DPState> getDPStates() {
+	public TreeMap<Integer,DPState> getDPStates() {
 		return dpStates;
 	}
 	
@@ -235,8 +235,11 @@ public class HGNode implements Prunable<HGNode> {
 		this.isDead = true;		
 	}
 
-
 	public void setPruneLogP(double estTotalLogP) {
 		this.estTotalLogP = estTotalLogP;
 	}
+
+    public List<HyperEdge> getHyperEdges() {
+        return this.hyperedges;
+    }
 }

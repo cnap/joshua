@@ -21,12 +21,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.PriorityQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import joshua.corpus.Vocabulary;
 import joshua.corpus.syntax.SyntaxTree;
-import joshua.corpus.vocab.SymbolTable;
 import joshua.decoder.JoshuaConfiguration;
+import joshua.decoder.chart_parser.CubePruneCombiner.CubePruneState;
 import joshua.decoder.chart_parser.DotChart.DotNode;
 import joshua.decoder.ff.FeatureFunction;
 import joshua.decoder.ff.state_maintenance.StateComputer;
@@ -61,11 +63,10 @@ import joshua.lattice.Node;
  * where i is in [0,n-1] and j is in [1,n]
  *
  * @author Zhifei Li, <zhifei.work@gmail.com>
- * @version $LastChangedDate: 2010-06-08 11:19:03 -0700 (Tue, 08 Jun 2010) $
+ * @author Matt Post <post@jhu.edu>
  */
 
 public class Chart {
-		
 
 	//===========================================================
 	// Statistics
@@ -107,24 +108,6 @@ public class Chart {
 	private Combiner combiner = null;
 	private ManualConstraintsHandler manualConstraintsHandler;
 	
-	//===========================================================
-	// Decoder-wide fields
-	//===========================================================
-	
-	/**
-	 * Shared symbol table for source language terminals, target
-	 * language terminals, and shared nonterminals.
-	 * <p>
-	 * It may be that separate tables should be maintained for
-	 * the source and target languages.
-	 * <p>
-	 * This class adds an untranslated word ID to the symbol
-	 * table. The Bin class adds a goal symbol nonterminal to
-	 * the symbol table.
-	 * <p>
-	 */
-	private SymbolTable symbolTable;
-	
 	
 //===============================================================
 // Static fields
@@ -165,7 +148,6 @@ public class Chart {
 		Lattice<Integer>           sentence,
 		List<FeatureFunction>      featureFunctions,
 		List<StateComputer>        stateComputers,
-		SymbolTable                symbolTable,
 		int                        segmentID,
 		Grammar[]                  grammars,
 		boolean                    useMaxLMCostForOOV,
@@ -178,14 +160,13 @@ public class Chart {
 		this.foreignSentenceLength = sentence.size() - 1;
 		this.featureFunctions      = featureFunctions;
 		this.stateComputers        = stateComputers;
-		this.symbolTable           = symbolTable;
 		this.parseTree             = parse_tree;
 		
 		// TODO: this is very memory-expensive
 		this.cells         = new Cell[foreignSentenceLength][foreignSentenceLength+1];
 		
 		this.segmentID    = segmentID;
-		this.goalSymbolID = this.symbolTable.addNonterminal(goalSymbol);
+		this.goalSymbolID = Vocabulary.id(goalSymbol);
 		this.goalBin      = new Cell(this, this.goalSymbolID);
 		this.grammars = grammars;
 		
@@ -193,16 +174,30 @@ public class Chart {
 		this.dotcharts = new DotChart[this.grammars.length];
 		for (int i = 0; i < this.grammars.length; i++)
 			this.dotcharts[i] = new DotChart(this.sentence, this.grammars[i], this);
+
+		/* The CubePruneCombiner defined here is fairly complicated.
+		 * It is designed to work both at the cell level and at the
+		 * span level, using a beam and threshold to have rules
+		 * compete amongst each other for a single node.  This can be
+		 * turned off in favor of a simple cube pruning pop-limit at
+		 * the span limit by setting pop-limit to a nonzero value.
+		 * Otherwise, if useBeamAndThresholdPrune is set to true, the
+		 * item-level cube-pruning + beam and threshold pruning is
+		 * used.  Finally, exhaustive pruning is used.
+		 */
 		
-		if (JoshuaConfiguration.useCubePrune) // TODO: should not directly refer to JoshuaConfiguration
+		if (JoshuaConfiguration.pop_limit > 0)
+			combiner = null;
+		else if (JoshuaConfiguration.useBeamAndThresholdPrune)
 			combiner = new CubePruneCombiner(this.featureFunctions, this.stateComputers);
 		else
 			combiner = new ExhaustiveCombiner(this.featureFunctions, this.stateComputers);
 
 		// Begin to do initialization work
 
-		//TODO: which grammar should we use to create a manual rule?, grammar[1] is the regular grammar
-		manualConstraintsHandler = new ManualConstraintsHandler(symbolTable, this, grammars[1], constraintSpans);
+		//TODO: which grammar should we use to create a manual rule? 
+		manualConstraintsHandler = new ManualConstraintsHandler(this, 
+				grammars[grammars.length - 1], constraintSpans);
 		
 		/* Add OOV rules; 
 		 * This should be called after the manual constraints have been set up.
@@ -217,7 +212,7 @@ public class Chart {
 				int sourceWord = arc.getLabel();
 				final int targetWord;
 				if (JoshuaConfiguration.mark_oovs) {
-					targetWord = symbolTable.addTerminal(symbolTable.getWord(sourceWord) + "_OOV");
+					targetWord = Vocabulary.id(Vocabulary.word(sourceWord) + "_OOV");
 				} else {
 					targetWord = sourceWord;
 				}
@@ -225,24 +220,24 @@ public class Chart {
 				if (parse_tree != null && (JoshuaConfiguration.constrain_parse || JoshuaConfiguration.use_pos_labels)) {
 					Collection<Integer> labels = parse_tree.getConstituentLabels(node.getNumber(), node.getNumber() + 1);
 					for (int l : labels)
-						oov_rule = this.grammars[1].constructLabeledOOVRule(this.featureFunctions.size(), sourceWord, targetWord, l, useMaxLMCostForOOV);
+						oov_rule = this.grammars[grammars.length - 1].constructLabeledOOVRule(
+								this.featureFunctions.size(), sourceWord, targetWord, l, useMaxLMCostForOOV);
 				}
 				else
-					oov_rule = this.grammars[1].constructOOVRule(this.featureFunctions.size(), sourceWord, targetWord, useMaxLMCostForOOV);
+					oov_rule = this.grammars[grammars.length - 1].constructOOVRule(
+							this.featureFunctions.size(), sourceWord, targetWord, useMaxLMCostForOOV);
 			
 				if (manualConstraintsHandler.containHardRuleConstraint(node.getNumber(), arc.getTail().getNumber())) {
 					//do not add the oov axiom
-					if (logger.isLoggable(Level.FINE))
-						logger.fine("Using hard rule constraint for span " + node.getNumber() + ", " + arc.getTail().getNumber());
+					logger.fine("Using hard rule constraint for span " + node.getNumber() + ", " + arc.getTail().getNumber());
 				} else {
 					addAxiom(node.getNumber(), arc.getTail().getNumber(), oov_rule, new SourcePath().extend(arc));
-					logger.finer("Adding OOV rule:\t" + oov_rule.toString(symbolTable));
+					logger.finer("Adding OOV rule:\t" + oov_rule.toString());
 				}
 			}
 		}
 		
-		if (logger.isLoggable(Level.FINE))
-			logger.fine("Finished seeding chart.");
+		logger.fine("Finished seeding chart.");
 	}
 
 	
@@ -254,6 +249,175 @@ public class Chart {
 	 * Construct the hypergraph with the help from DotChart.
 	 */
 	
+    private void completeSpan(int i, int j) {
+
+		logger.fine("[" + segmentID + "] SPAN(" + i + "," + j + ")");
+
+        if (JoshuaConfiguration.pop_limit > 0) {
+            /* We want to implement proper cube-pruning at the span level,
+             * with pruning controlled with the specification of a single
+             * parameter, a pop-limit on the number of items.  This
+             * pruning would be across all DotCharts (that is, across all
+             * grammars) and across all items in the span, regardless of
+             * other state (such as language model state or the lefthand
+             * side).
+             *
+             * The existing implementation prunes in a much less
+             * straightforward fashion.  Each Dotnode within each span is
+             * examined, and applicable rules compete amongst each other.
+             * The number of them that is kept is not absolute, but is
+             * determined by some combination of the maximum heap size and
+             * the score differences.  The score differences occur across
+             * items in the whole span.
+             */
+
+            /* STEP 1: create the heap, and seed it with all of the candidate states */
+            PriorityQueue<CubePruneState> candidates = new PriorityQueue<CubePruneState>();
+
+            // this records states we have already visited
+            HashSet<CubePruneState> visitedStates = new HashSet<CubePruneState>();
+
+            // seed it with the beginning states
+            // for each applicable grammar
+            for (int g = 0; g < grammars.length; g++) {
+                if (! grammars[g].hasRuleForSpan(i, j, foreignSentenceLength)
+                    || null == dotcharts[g].getDotCell(i,j))
+                    continue;
+                // for each rule with applicable rules
+                for (DotNode dotNode : dotcharts[g].getDotCell(i,j).getDotNodes()) {
+                    RuleCollection ruleCollection = dotNode.getApplicableRules();
+                    if (ruleCollection == null)
+                        continue;
+
+                    // create span if required
+                    if (cells[i][j] == null)
+                        cells[i][j] = new Cell(this, goalSymbolID);
+                
+                    List<Rule> sortedAndFilteredRules = manualConstraintsHandler.filterRules(i, j, ruleCollection.getSortedRules());
+                    SourcePath sourcePath = dotNode.getSourcePath();
+
+                    if (null == sortedAndFilteredRules || sortedAndFilteredRules.size() <= 0)
+                        continue;
+
+                    int arity = ruleCollection.getArity();
+
+					// Rules that have no nonterminals in them so far
+					// are added to the chart with no pruning
+                    if (arity == 0) {
+                        for (Rule rule: sortedAndFilteredRules) {
+                            cells[i][j].addHyperEdgeInCell(new ComputeNodeResult(
+                                    this.featureFunctions, rule, null, i, j, sourcePath, stateComputers, this.segmentID), rule, i, j, null, sourcePath, true);
+                        }
+                    } else {
+
+                        Rule bestRule = sortedAndFilteredRules.get(0);
+                        List<HGNode> currentAntNodes = new ArrayList<HGNode>();
+                        List<SuperNode> superNodes = dotNode.getAntSuperNodes();
+                        for (SuperNode si : superNodes) {
+                            // TODO: si.nodes must be sorted
+                            currentAntNodes.add(si.nodes.get(0));
+                        }
+
+                        ComputeNodeResult result =	new ComputeNodeResult(featureFunctions, bestRule, currentAntNodes, i, j, sourcePath, this.stateComputers, this.segmentID); 
+
+                        int[] ranks = new int[1+superNodes.size()];
+                        for (int r = 0; r < ranks.length; r++)
+                            ranks[r] = 1;
+
+                        CubePruneState bestState =	new CubePruneState(result, ranks, bestRule, currentAntNodes);
+                        bestState.setDotNode(dotNode);
+                        candidates.add(bestState);
+                        visitedStates.add(bestState);
+                    }
+                }
+            }
+
+            int popCount = 0;
+            while (candidates.size() > 0 && ++popCount <= JoshuaConfiguration.pop_limit) {
+                CubePruneState state = candidates.poll();
+                DotNode dotNode = state.getDotNode();
+                Rule currentRule = state.rule;
+                SourcePath sourcePath = dotNode.getSourcePath();
+                List<SuperNode> superNodes = dotNode.getAntSuperNodes();
+                List<Rule> rules = manualConstraintsHandler.filterRules(i, j, dotNode.getApplicableRules().getSortedRules());
+
+                List<HGNode> currentAntNodes = new ArrayList<HGNode>(state.antNodes);
+
+                // add the hypothesis to the chart
+                cells[i][j].addHyperEdgeInCell(state.nodeStatesTbl, state.rule, i, j, state.antNodes, sourcePath, true);
+
+                // expand the hypothesis
+                for (int k = 0; k < state.ranks.length; k++) {
+
+                    // get new_ranks, which is the same as the old
+                    // ranks, with the current index extended
+                    int[] newRanks = new int[state.ranks.length];
+                    for (int d = 0; d < state.ranks.length; d++)
+                        newRanks[d] = state.ranks[d];
+
+                    newRanks[k] = state.ranks[k] + 1;
+				
+                    // can't extend
+                    if ( (k == 0 && newRanks[k] > rules.size())
+                        || (k != 0 && newRanks[k] > superNodes.get(k-1).nodes.size()) )
+                        continue;
+
+                    // k = 0 means we extend the rule being used
+                    // k > 0 means we extend one of the nodes
+
+                    Rule oldRule = null;
+                    HGNode oldItem = null;
+                    if (k == 0) { // slide rule
+                        oldRule = currentRule;
+                        currentRule = rules.get(newRanks[k]-1);
+                    } else { // slide ant
+                        oldItem = currentAntNodes.get(k-1); // conside k == 0 is rule
+                        currentAntNodes.set(k-1,
+                            superNodes.get(k-1).nodes.get(newRanks[k]-1));
+                    }
+
+                    CubePruneState nextState = new CubePruneState(
+						new ComputeNodeResult(featureFunctions, currentRule, currentAntNodes, i, j, sourcePath, stateComputers, this.segmentID),
+                        newRanks, currentRule, currentAntNodes);
+                    nextState.setDotNode(dotNode);
+
+                    if (visitedStates.contains(nextState)) // explored before
+                        continue;
+
+                    visitedStates.add(nextState);
+                    candidates.add(nextState);
+
+                    // recover
+                    if (k == 0)
+                        currentRule = oldRule;
+                    else
+                        currentAntNodes.set(k-1, oldItem);
+
+                }
+            }
+
+        } else {
+            for (int k = 0; k < this.grammars.length; k++) {
+                // grammars have a maximum input span they'll apply to
+                if (this.grammars[k].hasRuleForSpan(i, j, foreignSentenceLength)
+                    && null != this.dotcharts[k].getDotCell(i, j)) {
+						
+                    // foreach dotnode in the span
+                    for (DotNode dotNode: this.dotcharts[k].getDotCell(i, j).getDotNodes()) {
+                        // foreach applicable rule (rules with the same source side)
+                        RuleCollection ruleCollection = dotNode.getTrieNode().getRules();
+                        if (ruleCollection != null) { // have rules under this trienode
+                            // TODO: filter the rule according to LHS constraint								
+                            // complete the cell
+                            completeCell(i, j, dotNode, ruleCollection.getSortedRules(), ruleCollection.getArity(), dotNode.getSourcePath());									
+								
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 	/** a parser that can handle:
 	 * - multiple grammars
 	 * - on the fly binarization
@@ -261,9 +425,7 @@ public class Chart {
 	 * */
 	
 	public HyperGraph expand() {
-		
-		if (logger.isLoggable(Level.FINE))
-			logger.fine("Begin expand.");
+		logger.fine("Begin expand.");
 		
 		for (int width = 1; width <= foreignSentenceLength; width++) {
 			for (int i = 0; i <= foreignSentenceLength - width; i++) {
@@ -273,8 +435,7 @@ public class Chart {
 				
 				
 				//(1)=== expand the cell in dotchart
-				if (logger.isLoggable(Level.FINEST))
-					logger.finest("Expanding cell");
+				logger.finest("Expanding cell");
 				for (int k = 0; k < this.grammars.length; k++) {
 					/**each dotChart can act individually (without consulting other dotCharts)
 					 * because it either consumes the source input or the complete nonTerminals, 
@@ -285,33 +446,17 @@ public class Chart {
 			
 				
 				//(2)=== populate COMPLETE rules into Chart: the regular CKY part
-				if (logger.isLoggable(Level.FINEST))
-					logger.finest("Adding complete items into chart");
-				for (int k = 0; k < this.grammars.length; k++) {
-					
-					if (this.grammars[k].hasRuleForSpan(i, j, foreignSentenceLength)
-						&& null != this.dotcharts[k].getDotCell(i, j)) {
-						
-						for (DotNode dotNode: this.dotcharts[k].getDotCell(i, j).getDotNodes()) {
-							RuleCollection ruleCollection = dotNode.getTrieNode().getRules();
-							if (ruleCollection != null) { // have rules under this trienode
-								// TODO: filter the rule according to LHS constraint								
-								completeCell(i, j, dotNode, ruleCollection.getSortedRules(), ruleCollection.getArity(), dotNode.getSourcePath());									
-								
-							}
-						}
-					}
-				}				
+				logger.finest("Adding complete items into chart");
+
+                completeSpan(i,j);
 				
 				//(3)=== process unary rules (e.g., S->X, NP->NN), just add these items in chart, assume acyclic
-				if (logger.isLoggable(Level.FINEST))
-					logger.finest("Adding unary items into chart");
+				logger.finest("Adding unary items into chart");
 				addUnaryNodes(this.grammars,i,j);
 				
 				
 				//(4)=== in dot_cell(i,j), add dot-nodes that start from the /complete/ superIterms in chart_cell(i,j)
-				if (logger.isLoggable(Level.FINEST))
-					logger.finest("Initializing new dot-items that start from complete items in this cell");
+				logger.finest("Initializing new dot-items that start from complete items in this cell");
 				for (int k = 0; k < this.grammars.length; k++) {
 					if (this.grammars[k].hasRuleForSpan(i, j, foreignSentenceLength)) {
 						this.dotcharts[k].startDotItems(i,j);
@@ -340,8 +485,7 @@ public class Chart {
 			return null;
 		}
 		
-		if(logger.isLoggable(Level.FINE))
-			logger.fine("Finished expand");
+		logger.fine("Finished expand");
 		return new HyperGraph(this.goalBin.getSortedNodes().get(0), -1, -1, this.segmentID, foreignSentenceLength);
 	}
 	
@@ -356,17 +500,15 @@ public class Chart {
 //===============================================================
 	
 	private void logStatistics(Level level) {
-		if (logger.isLoggable(level)) {
-			logger.log(level,
-				String.format("ADDED: %d; MERGED: %d; PRUNED: %d; PRE-PRUNED: %d, FUZZ1: %d, FUZZ2: %d; DOT-ITEMS ADDED: %d",
-					this.nAdded,
-					this.nMerged,
-					this.nPrunedItems,
-					this.nPreprunedEdges,
-					this.nPreprunedFuzz1,
-					this.nPreprunedFuzz2,
-					this.nDotitemAdded));
-		}
+		logger.log(level,
+			String.format("ADDED: %d; MERGED: %d; PRUNED: %d; PRE-PRUNED: %d, FUZZ1: %d, FUZZ2: %d; DOT-ITEMS ADDED: %d",
+				this.nAdded,
+				this.nMerged,
+				this.nPrunedItems,
+				this.nPreprunedEdges,
+				this.nPreprunedFuzz1,
+				this.nPreprunedFuzz2,
+				this.nDotitemAdded));
 	}
 	
 	
@@ -396,7 +538,7 @@ public class Chart {
 				if (! gr.hasRuleForSpan(i, j, foreignSentenceLength))
 					continue;
 				
-				Trie childNode = gr.getTrieRoot().matchOne(node.lhs); // match rule and complete part
+				Trie childNode = gr.getTrieRoot().match(node.lhs); // match rule and complete part
 				if (childNode != null
 					&& childNode.getRules() != null
 					&& childNode.getRules().getArity() == 1) { // have unary rules under this trienode
@@ -409,7 +551,7 @@ public class Chart {
 						ComputeNodeResult states = new ComputeNodeResult(this.featureFunctions, rule, antecedents, i, j, new SourcePath(), stateComputers, this.segmentID);
 						HGNode resNode = chartBin.addHyperEdgeInCell(states, rule, i, j, antecedents, new SourcePath(), true);
 						
-						logger.finest(rule.toString(symbolTable));
+						logger.finest(rule.toString());
 						
 						if (null != resNode && !seen_lhs.contains(resNode.lhs)) {
 							queue.add(resNode);
@@ -428,7 +570,12 @@ public class Chart {
 		if (null == this.cells[i][j]) {
 			this.cells[i][j] = new Cell(this, this.goalSymbolID);
 		}		
-		combiner.addAxiom(this, this.cells[i][j], i, j, rule, srcPath);
+
+		this.cells[i][j].addHyperEdgeInCell(
+				new ComputeNodeResult(this.featureFunctions, rule, null, i, j, srcPath, stateComputers, segmentID),
+				rule, i, j, null, srcPath, false);
+
+		// combiner.addAxiom(this, this.cells[i][j], i, j, rule, srcPath);
 	}
 	
 	
@@ -438,8 +585,7 @@ public class Chart {
 		logger.finest("\n\n CELL (" + i + ", " + j + ")");
 			
 		if (manualConstraintsHandler.containHardRuleConstraint(i, j)) {
-			if (logger.isLoggable(Level.FINE)) 
-				logger.fine("Hard rule constraint for span " + i +", " + j);
+			logger.fine("Hard rule constraint for span " + i +", " + j);
 			return; //do not add any nodes
 		}
 		
@@ -454,8 +600,7 @@ public class Chart {
 			labels.addAll(parseTree.getCcgLabels(i, j));
 			
 			for (int l : labels)
-				if (logger.isLoggable(Level.FINE)) 
-					logger.finest("Allowing label: " + symbolTable.getWord(l));
+				logger.finest("Allowing label: " + Vocabulary.word(l));
 			
 			filteredRules = new ArrayList<Rule>(sortedRules.size());
 			for (Rule r : sortedRules)
@@ -467,15 +612,12 @@ public class Chart {
 		}
 		
 		for (Rule r : filteredRules)
-			logger.finest(r.toString(symbolTable) + " num_feats: " + r.getFeatureScores().length);
+			logger.finest(r.toString() + " num_feats: " + r.getFeatureScores().length);
 		
 		if (arity==0)
 			combiner.addAxioms(this, this.cells[i][j], i, j, filteredRules, srcPath);
 		else
 			//this.cells[i][j].completeCell(i, j, dt.l_ant_super_items, filterRules(i,j,rb.getSortedRules()), rb.getArity(), srcPath);
 			combiner.combine(this, this.cells[i][j], i, j,  dotNode.getAntSuperNodes(), filteredRules, arity, srcPath);
-	}	
-	
-	
-	
+	} 
 }

@@ -1,3 +1,4 @@
+
 /* This file is part of the Joshua Machine Translation System.
  * 
  * Joshua is free software; you can redistribute it and/or modify
@@ -18,21 +19,19 @@
 
 package joshua.util;
 
-import joshua.zmert.EvaluationMetric;
-
-import java.util.TreeSet;
-import java.text.DecimalFormat;
-
-// BUG: try using joshua.util.io.LineReader instead
-import java.io.IOException;
-import java.io.FileReader;
 import java.io.BufferedReader;
-import java.io.FileNotFoundException;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.text.DecimalFormat;
+import java.util.TreeSet;
+
+import joshua.zmert.EvaluationMetric;
 
 public class JoshuaEval {
 	final static DecimalFormat f4 = new DecimalFormat("###0.0000");
@@ -365,11 +364,11 @@ line format:
 		} // while (i)
 		
 		if (refsPerSen > 1) {
-			// the provided refFileName might be a prefix
-			File dummy = new File(refFileName);
-			if (!dummy.exists()) {
+			// the provided refFileName must be a prefix
+			// File dummy = new File(refFileName);
+			// if (!dummy.exists()) {
 				refFileName = createUnifiedRefFile(refFileName,refsPerSen);
-			}
+			// }
 		} else {
 			checkFile(refFileName);
 		}

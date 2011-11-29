@@ -1,11 +1,13 @@
 package joshua.decoder.chart_parser;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.PriorityQueue;
 
 import joshua.decoder.JoshuaConfiguration;
+import joshua.decoder.chart_parser.DotChart.DotNode;
 import joshua.decoder.ff.FeatureFunction;
 import joshua.decoder.ff.state_maintenance.StateComputer;
 import joshua.decoder.ff.tm.Rule;
@@ -40,7 +42,7 @@ public class CubePruneCombiner implements Combiner{
 				rule, i, j, null, srcPath, false);
 	}
 
-	
+
 	/** Add complete Items in Chart pruning inside this function */
 	// TODO: our implementation do the prunining for each DotItem
 	//       under each grammar, not aggregated as in the python
@@ -48,17 +50,17 @@ public class CubePruneCombiner implements Combiner{
 	// TODO: the implementation is little bit different from
 	//       the description in Liang'2007 ACL paper
 	public void combine(Chart chart, Cell cell, int i, int j, List<SuperNode> superNodes, List<Rule> rules, int arity, SourcePath srcPath) {
+
+		if (null == rules || rules.size() <= 0) {
+			return;
+		}
 		
 		//combinations: rules, antecent nodes
 		//in the paper, combinationHeap is called cand[v]
 		PriorityQueue<CubePruneState> combinationHeap =	new PriorityQueue<CubePruneState>();
 		
 		// rememeber which state has been explored
-		HashMap<String,Integer> cubeStateTbl = new HashMap<String,Integer>();
-		
-		if (null == rules || rules.size() <= 0) {
-			return;
-		}
+		HashSet<CubePruneState> visitedStates = new HashSet<CubePruneState>();
 		
 		//===== seed the heap with best node
 		Rule currentRule = rules.get(0);
@@ -76,7 +78,7 @@ public class CubePruneCombiner implements Combiner{
 		
 		CubePruneState bestState =	new CubePruneState(result, ranks, currentRule, currentAntNodes);
 		combinationHeap.add(bestState);
-		cubeStateTbl.put(bestState.getSignature(),1);
+		visitedStates.add(bestState);
 		// cube_state_tbl.put(best_state,1);
 		
 		//====== extend the heap
@@ -110,14 +112,8 @@ public class CubePruneCombiner implements Combiner{
 				}
 				newRanks[k] = curState.ranks[k] + 1;
 				
-				String new_sig = CubePruneState.getSignature(newRanks);
-				
-				if (cubeStateTbl.containsKey(new_sig) // explored before
-				|| (k == 0 && newRanks[k] > rules.size())
-				|| (k != 0 && newRanks[k] > superNodes.get(k-1).nodes.size())
-				) {
+				if ((k == 0 && newRanks[k] > rules.size()) || (k != 0 && newRanks[k] > superNodes.get(k-1).nodes.size()))
 					continue;
-				}
 				
 				if (k == 0) { // slide rule
 					oldRule = currentRule;
@@ -133,8 +129,14 @@ public class CubePruneCombiner implements Combiner{
 								currentAntNodes, i, j, srcPath, stateComputers, chart.segmentID),
 					newRanks, currentRule, currentAntNodes);
 				
+				// already visited this state
+				if (visitedStates.contains(tState))
+					continue;
+
 				// add state into heap
-				cubeStateTbl.put(new_sig,1);				
+				visitedStates.add(tState);
+
+				// prune
 				if (result.getExpectedTotalLogP() > cell.beamPruner.getCutoffLogP() - JoshuaConfiguration.fuzz2) {
 					combinationHeap.add(tState);
 				} else {
@@ -159,11 +161,12 @@ public class CubePruneCombiner implements Combiner{
 //	===============================================================
 //	 CubePruneState class
 //	===============================================================
-		private static class CubePruneState implements Comparable<CubePruneState> {
+		public static class CubePruneState implements Comparable<CubePruneState> {
 			int[]             ranks;
 			ComputeNodeResult nodeStatesTbl;
 			Rule              rule;
-			List<HGNode> antNodes;
+			List<HGNode>      antNodes;
+            private DotNode   dotNode;
 			
 			public CubePruneState(ComputeNodeResult state, int[] ranks, Rule rule, 
 					List<HGNode> antecedents)
@@ -174,24 +177,35 @@ public class CubePruneCombiner implements Combiner{
 				// create a new vector is critical, because
 				// currentAntecedents will change later
 				this.antNodes = new ArrayList<HGNode>(antecedents);
+                this.dotNode = null;
 			}
 			
-			
-			private static String getSignature(int[] ranks2) {
-				StringBuffer sb = new StringBuffer();
-				if (null != ranks2) {
-					for (int i = 0; i < ranks2.length; i++) {
-						sb.append(' ').append(ranks2[i]);
-					}
-				}
-				return sb.toString();
+            public void setDotNode(DotNode node) {
+                this.dotNode = node;
+            }
+
+            public DotNode getDotNode() {
+                return this.dotNode;
+            }
+
+			public boolean equals(Object obj) {
+				if (obj == null) return false;
+				if (!this.getClass().equals(obj.getClass())) return false;
+				CubePruneState state = (CubePruneState) obj;
+				if (state.ranks.length != ranks.length) return false;
+				for (int i = 0; i < ranks.length; i++)
+					if (state.ranks[i] != ranks[i]) return false;
+				if (getDotNode() != state.getDotNode()) return false;
+
+				return true;
 			}
-			
-			
-			private String getSignature() {
-				return getSignature(ranks);
+
+			public int hashCode() {
+				int hash = (dotNode != null) ? dotNode.hashCode() : 0;
+				hash += Arrays.hashCode(ranks);
+
+				return hash;
 			}
-			
 			
 			/**
 			 * Compares states by ExpectedTotalLogP, allowing states

@@ -23,6 +23,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import joshua.decoder.ff.tm.Grammar;
+import joshua.decoder.ff.tm.Rule;
+import joshua.decoder.ff.tm.RuleCollection;
 import joshua.decoder.ff.tm.Trie;
 import joshua.lattice.Arc;
 import joshua.lattice.Lattice;
@@ -49,10 +51,10 @@ class DotChart {
 	/** 
 	 * Two-dimensional chart of cells. Some cells might be null.
 	 */
-	private DotCell[][] dotbins;
+	private DotCell[][] dotcells;
 	
 	public DotCell getDotCell(int i, int j){
-		return dotbins[i][j];
+		return dotcells[i][j];
 	}
 	
 	
@@ -64,7 +66,7 @@ class DotChart {
 	 * CKY+ style parse chart in which completed span entries
 	 * are stored.
 	 */
-	private Chart pChart;
+	private Chart dotChart;
 	
 	/**
 	 * Translation grammar which contains the translation rules.
@@ -104,11 +106,11 @@ class DotChart {
 	 *                span entries are stored.
 	 */
 	public DotChart(Lattice<Integer> input, Grammar grammar, Chart chart) {
-		this.pChart    = chart;
+		this.dotChart    = chart;
 		this.pGrammar  = grammar;
 		this.input      = input;
 		this.sentLen   = input.size();
-		this.dotbins = new DotCell[sentLen][sentLen+1];
+		this.dotcells = new DotCell[sentLen][sentLen+1];
 		
 		//seeding the dotChart
 		seed();
@@ -171,12 +173,13 @@ class DotChart {
 	 * ways to extend the dot postion.
 	 */
 	void expandDotCell(int i, int j) {
-		//if (logger.isLoggable(Level.FINEST)) logger.finest("Expanding dot cell ("+i+","+j+")");
+		if (logger.isLoggable(Level.FINEST))
+			logger.finest("Expanding dot cell ("+i+","+j+")");
 		
 		// (1) if the dot is just to the left of a non-terminal variable, 
 		//     looking for theorems or axioms in the Chart that may apply and 
 		//     extend the dot pos
-		for (int k = i + 1; k < j; k++) { //varying middle point k
+		for (int k = i + 1; k < j; k++) { // Varying middle point k.
 			extendDotItemsWithProvedItems(i,k,j,false);
 		}
 		
@@ -189,13 +192,12 @@ class DotChart {
 			int last_word = arc.getLabel();
 			// Tail and Head are backward! FIX names!
 			int arc_len = arc.getTail().getNumber() - arc.getHead().getNumber();
-		
 			
 			//int last_word=foreign_sent[j-1]; // input.getNode(j-1).getNumber(); //	
 			
-			if (null != dotbins[i][j-1]) {
+			if (null != dotcells[i][j-1]) {
 				//dotitem in dot_bins[i][k]: looking for an item in the right to the dot
-				for (DotNode dt : dotbins[i][j-1].dotNodes) {
+				for (DotNode dt : dotcells[i][j-1].getDotNodes()) {
 					if (null == dt.trieNode) {
 						// We'll get one anyways in the else branch
 						// TODO: better debugging.
@@ -205,7 +207,7 @@ class DotChart {
 						
 					} else {
 						// match the terminal
-						Trie child_tnode = dt.trieNode.matchOne(last_word);
+						Trie child_tnode = dt.trieNode.match(last_word);
 						if (null != child_tnode) {
 							// we do not have an ant for the terminal
 							addDotItem(child_tnode, i, j - 1 + arc_len, dt.antSuperNodes, null, dt.srcPath.extend(arc));
@@ -247,28 +249,26 @@ class DotChart {
 	 * @param j End index of a completed chart item
 	 * @param startDotItems 
 	 */
-	private void extendDotItemsWithProvedItems(
-		int i, int k, int j,
-		boolean startDotItems)
+	private void extendDotItemsWithProvedItems(int i, int k, int j, boolean startDotItems)
 	{
-		if (this.dotbins[i][k] == null || this.pChart.getCell(k, j) == null) {
+		if (this.dotcells[i][k] == null || this.dotChart.getCell(k, j) == null) {
 			return;
 		}
 		
-		// complete super-items
+		// complete super-items (items over the same span with different LHSs)
 		List<SuperNode> t_ArrayList = new ArrayList<SuperNode>(
-				this.pChart.getCell(k, j).getSortedSuperItems().values());
+				this.dotChart.getCell(k, j).getSortedSuperItems().values());
 		
 		// dotitem in dot_bins[i][k]: looking for an item in the right to the dot
-		for (DotNode dt : dotbins[i][k].dotNodes) {
+		for (DotNode dotNode : dotcells[i][k].dotNodes) {
 			// see if it matches what the dotitem is looking for
-			for (SuperNode s_t : t_ArrayList) {
-				Trie child_tnode = dt.trieNode.matchOne(s_t.lhs);
+			for (SuperNode superNode : t_ArrayList) {
+				Trie child_tnode = dotNode.trieNode.match(superNode.lhs);
 				if (null != child_tnode) {
 					if (true == startDotItems && !child_tnode.hasExtensions()) {
 						continue; //TODO
 					}
-					addDotItem(child_tnode, i, j, dt.getAntSuperNodes(), s_t, dt.getSourcePath().extendNonTerminal());
+					addDotItem(child_tnode, i, j, dotNode.getAntSuperNodes(), superNode, dotNode.getSourcePath().extendNonTerminal());
 				}
 			}
 		}
@@ -298,14 +298,22 @@ class DotChart {
 		}
 		
 		DotNode item = new DotNode(i, j, tnode, antSuperNodes, srcPath);
-		if (dotbins[i][j] == null) {
-			dotbins[i][j] = new DotCell();
+		if (dotcells[i][j] == null) {
+			dotcells[i][j] = new DotCell();
 		}
-		dotbins[i][j].addDotNode(item);
-		pChart.nDotitemAdded++;
+		dotcells[i][j].addDotNode(item);
+		dotChart.nDotitemAdded++;
 		
-		if (logger.isLoggable(Level.FINEST)) 
-			logger.finest(String.format("Add a dotitem in cell (%d, %d), n_dotitem=%d, %s", i, j, pChart.nDotitemAdded, srcPath));
+		if (logger.isLoggable(Level.FINEST)) {
+			logger.finest(String.format("Add a dotitem in cell (%d, %d), n_dotitem=%d, %s", i, j, dotChart.nDotitemAdded, srcPath));
+			
+			RuleCollection rules = tnode.getRules();
+			if (rules != null) {
+				for (Rule r : rules.getRules()) {
+					logger.finest(r.toString());
+				}
+			}
+		}
 	}
 	
 	
@@ -330,8 +338,6 @@ class DotChart {
 				l_dot_items= new ArrayList<DotItem>();*/
 			dotNodes.add(dt);
 		}
-		
-		
 	}
 	
 	
@@ -350,7 +356,6 @@ class DotChart {
 		private List<SuperNode> antSuperNodes = null; //pointer to SuperNode in Chart
 		private SourcePath srcPath;
 		
-		
 		public DotNode(int i, int j, Trie trieNode,  List<SuperNode> antSuperNodes, SourcePath srcPath) {
 			//i = i_in;
 			//j = j_in;
@@ -359,6 +364,35 @@ class DotChart {
 			this.srcPath = srcPath;
 		}
 		
+		public boolean equals(Object obj) {
+			if (obj == null) return false;
+			if (!this.getClass().equals(obj.getClass())) return false;
+			DotNode state = (DotNode) obj;
+
+			/* Technically, we should be comparing the span
+			 * inforamtion as well, but that would require us to store
+			 * it, increasing memory requirements, and we should be
+			 * able to guarantee that we won't be comparing DotNodes
+			 * across spans.
+			 */
+			// if (this.i != state.i || this.j != state.j)
+			// 	return false;
+
+			if (this.trieNode != state.trieNode)
+				return false;
+
+			return true;
+		}
+
+		public int hashCode() {
+			return this.trieNode.hashCode();
+		}
+
+        // convenience function
+        public RuleCollection getApplicableRules() {
+            return getTrieNode().getRules();
+        }
+
 		public Trie getTrieNode(){
 			return trieNode;			
 		}

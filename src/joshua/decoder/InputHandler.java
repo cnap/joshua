@@ -18,24 +18,22 @@
 
 package joshua.decoder;
 
-import joshua.decoder.segment_file.Sentence;
-import joshua.decoder.segment_file.LatticeInput;
-
-import java.util.Iterator;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import java.nio.charset.Charset;
+import java.io.BufferedReader;
 import java.io.FileDescriptor;
 import java.io.FileInputStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.logging.Logger;
 import java.util.zip.GZIPInputStream;
+
+import joshua.decoder.segment_file.LatticeInput;
+import joshua.decoder.segment_file.Sentence;
 
 /**
  * This class represents input to the decoder.  It currently supports
@@ -73,7 +71,6 @@ public class InputHandler implements Iterator<Sentence> {
     List<Sentence>    issued;
     List<Translation> completed;
     int lastCompletedId = -1;
-    static final Object lock = new Object();
 
     InputHandler(String corpusFile) {
         this.corpusFile = corpusFile;
@@ -103,30 +100,31 @@ public class InputHandler implements Iterator<Sentence> {
         prepareNextLine();
     }
 
-    private synchronized void prepareNextLine() {
-        // technically the synchronization is unnecessary because this
-        // is only called from the constructor and next(), but it
-        // feels like it should be synchronized
-        try {
-            String line = lineReader.readLine();
-            sentenceNo++;
-            if (line == null) {
-                nextSentence = null;
-            } else {
-                if (line.startsWith("(((")) {
-                    nextSentence = new LatticeInput(line, sentenceNo);
-                } else {
-                    nextSentence = new Sentence(line, sentenceNo);
-                }
+	/**
+	 * This is called only from (a) the constructor and (b) the next()
+	 * function.  Since the Constructor is called only once, and the
+	 * call to prepareNextLine() in next() happens within a lock, this
+	 * function does not require synchronization.
+	 */
+    private void prepareNextLine() {
+		try {
+			String line = lineReader.readLine();
+			sentenceNo++;
+			if (line == null) {
+				nextSentence = null;
+			} else {
+				if (line.startsWith("(((")) {
+					nextSentence = new LatticeInput(line, sentenceNo);
+				} else {
+					nextSentence = new Sentence(line, sentenceNo);
+				}
 
-                synchronized(lock) {
-                    issued.add(nextSentence);
-                    completed.add(null);
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+				issued.add(nextSentence);
+				completed.add(null);
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
     }
 
     public synchronized boolean hasNext() {
@@ -136,10 +134,13 @@ public class InputHandler implements Iterator<Sentence> {
     /*
      * Returns the next sentence item.
      */
-    public synchronized Sentence next() {
-        Sentence sentence = nextSentence;
+    public Sentence next() {
+		Sentence sentence = null;
 
-        prepareNextLine();
+		synchronized(this) {
+			sentence = nextSentence;
+			prepareNextLine();
+		}
 
         return sentence;
     }
@@ -152,13 +153,11 @@ public class InputHandler implements Iterator<Sentence> {
     /**
      * Receives a sentence from a thread that has finished translating it.
      */
-    public synchronized void register(Translation translation) {
+    public void register(Translation translation) {
         int id = translation.id();
 
-        logger.fine("thread " + id + " finished");
-
-        // store this one
-        synchronized(lock) {
+        synchronized(this) {
+			// store this one
             completed.set(id,translation);
 
             // if the previous sentence is the last item, then print
@@ -167,8 +166,6 @@ public class InputHandler implements Iterator<Sentence> {
             if (lastCompletedId == id - 1) {
 
                 for (int i = id; i < completed.size() && completed.get(i) != null; i++) {
-                    logger.fine("thread " + id + " printing");
-
                     Translation t = completed.get(i);
                     t.print();
                     // delete it
@@ -177,7 +174,7 @@ public class InputHandler implements Iterator<Sentence> {
                     lastCompletedId++;
                 }
             } else {
-                logger.fine("thread " + id + " waiting for thread " + (id-1));
+                logger.fine("InputManager::register(sentence " + id + ") waiting on sentence " + (id-1));
             }
         }
     }

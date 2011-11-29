@@ -17,17 +17,17 @@
  */
 package joshua.decoder;
 
-import joshua.util.Cache;
-import joshua.util.Regex;
-import joshua.util.io.LineReader;
-
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.io.PrintWriter;
-import java.io.FileWriter;
-import java.io.File;
-import java.io.IOException;
+
+import joshua.util.Cache;
+import joshua.util.Regex;
+import joshua.util.io.LineReader;
 
 /**
  * Configuration file for Joshua decoder.
@@ -114,9 +114,14 @@ public class JoshuaConfiguration {
 	
 	
 	//pruning config
-	//note we can use both cube pruning and "beamAndThreshold" pruning
-	public static boolean useCubePrune             = true;
-	public static boolean useBeamAndThresholdPrune = true;
+
+	// Cube pruning is always on, with a span-level pop limit of 1000.
+	// Beam and threshold pruning can be enabled, which also changes
+	// the nature of cube pruning so that the pop limit is no longer
+	// used.  If both are turned off, exhaustive pruning takes effect.
+    public static int     pop_limit                = 1000;
+    public static boolean useCubePrune             = true;
+    public static boolean useBeamAndThresholdPrune = false;
 	public static double  fuzz1                    = 0.1;
 	public static double  fuzz2                    = 0.1;
 	public static int     max_n_items              = 30;
@@ -130,12 +135,6 @@ public class JoshuaConfiguration {
 	public static boolean add_combined_cost   = true; //in the nbest file, compute the final score
 	public static int     topN                = 500;
 	public static boolean escape_trees        = false;
-	
-	//remote lm server
-	public static boolean use_remote_lm_server  = false;
-	public static String  remote_symbol_tbl     = "null"; //this file will first be created by remote_lm_server, and read by remote_suffix_server and the decoder
-	public static int     num_remote_lm_servers = 1;
-	public static String  f_remote_server_list  = "null";
 	
 	//parallel decoding
 	public static String parallel_files_prefix = "/tmp/temp.parallel"; // C:\\Users\\zli\\Documents\\temp.parallel; used for parallel decoding
@@ -176,14 +175,14 @@ public class JoshuaConfiguration {
 	
 	public static boolean useMicroTMFeat = true;
 	public static String wordMapFile;/*tbl for mapping rule words*/
-
-	
 	
 	// use google linear corpus gain?
 	public static boolean useGoogleLinearCorpusGain = false;
 	public static double[] linearCorpusGainThetas = null;
 	public static boolean mark_oovs = true;
 	
+	// used to extract oracle hypotheses from the forest
+	public static String oracleFile = "";
 	
 	private static final Logger logger =
 		Logger.getLogger(JoshuaConfiguration.class.getName());
@@ -351,26 +350,19 @@ public class JoshuaConfiguration {
 						logger.finest(String.format("floor value for probabilities returned as lexical transaltion probabilities: %s", sa_lex_floor_prob));
 				} else if ("use_srilm".equals(fds[0])) {
 					use_srilm = Boolean.valueOf(fds[1]);
-					if (use_srilm) {
-						use_kenlm = true;
-						System.err.println("WARNING: srilm no longer supported, will use KenLM instead");
-					}
-					if (logger.isLoggable(Level.FINEST))
-						logger.finest(String.format("use_srilm: %s", use_srilm));
+					logger.warning("WARNING: srilm no longer supported, will use KenLM instead");
+					logger.finest(String.format("use_srilm: %s", use_srilm));
 				} else if ("use_kenlm".equals(fds[0])) {
 					use_kenlm = Boolean.valueOf(fds[1]);
-					if (logger.isLoggable(Level.FINEST))
-						logger.finest(String.format("use_kenlm: %s", use_kenlm));
+					logger.finest(String.format("use_kenlm: %s", use_kenlm));
 					
 				} else if ("use_bloomfilter_lm".equals(fds[0])) {
 					use_bloomfilter_lm = Boolean.valueOf(fds[1]);
-					if (logger.isLoggable(Level.FINEST))
-						logger.finest(String.format("use_bloomfilter_lm: %s", use_bloomfilter_lm));
+					logger.finest(String.format("use_bloomfilter_lm: %s", use_bloomfilter_lm));
 					
 				} else if ("use_trie_lm".equals(fds[0])) {
 					use_trie_lm = Boolean.valueOf(fds[1]);
-					if (logger.isLoggable(Level.FINEST))
-						logger.finest(String.format("use_trie_lm: %s", use_trie_lm));
+					logger.finest(String.format("use_trie_lm: %s", use_trie_lm));
 					
 				} else if ("lm_ceiling_cost".equals(fds[0])) {
 					lm_ceiling_cost = Double.parseDouble(fds[1]);
@@ -526,31 +518,6 @@ public class JoshuaConfiguration {
 					if (logger.isLoggable(Level.FINEST))
 						logger.finest(String.format("topN: %s", topN));
 					
-				} else if ("use_remote_lm_server".equals(fds[0])) {
-					use_remote_lm_server = Boolean.valueOf(fds[1]);
-					if (logger.isLoggable(Level.FINEST)) 
-						logger.finest(String.format("use_remote_lm_server: %s", use_remote_lm_server));
-					
-				} else if ("f_remote_server_list".equals(fds[0])) {
-					f_remote_server_list = fds[1];
-					if (logger.isLoggable(Level.FINEST)) 
-						logger.finest(String.format("f_remote_server_list: %s", f_remote_server_list));
-					
-				} else if ("num_remote_lm_servers".equals(fds[0])) {
-					num_remote_lm_servers = Integer.parseInt(fds[1]);
-					if (logger.isLoggable(Level.FINEST)) 
-						logger.finest(String.format("num_remote_lm_servers: %s", num_remote_lm_servers));
-					
-				} else if ("remote_symbol_tbl".equals(fds[0])) {
-					remote_symbol_tbl = fds[1]; 
-					if (logger.isLoggable(Level.FINEST)) 
-						logger.finest(String.format("remote_symbol_tbl: %s", remote_symbol_tbl));
-					
-				} else if ("remote_lm_server_port".equals(fds[0])) {
-					//port = Integer.parseInt(fds[1]);
-					if (logger.isLoggable(Level.FINEST)) 
-						logger.finest(String.format("remote_lm_server_port: not used"));
-					
 				} else if ("parallel_files_prefix".equals(fds[0])) {
 					Random random = new Random();
 		            int v = random.nextInt(10000000);//make it random
@@ -599,6 +566,9 @@ public class JoshuaConfiguration {
 					if (logger.isLoggable(Level.FINEST))
 						logger.finest("segmentFileParserClass: " + segmentFileParserClass);
 					
+                } else if ("pop-limit".equals(fds[0])) {
+                    pop_limit = Integer.valueOf(fds[1]);
+                    logger.finest(String.format("pop-limit: %s", pop_limit)); 
 				} else if ("useCubePrune".equals(fds[0])) {
 					useCubePrune = Boolean.valueOf(fds[1]);
 					if(useCubePrune==false)
@@ -668,8 +638,15 @@ public class JoshuaConfiguration {
 					
 					logger.finest(String.format("googleBLEUWeights: %s", linearCorpusGainThetas));		
 					
+				} else if ("oracleFile".equals(fds[0])) {
+					oracleFile = fds[1].trim();
+					if (! new File(oracleFile).exists()) {
+						logger.warning("FATAL: can't find oracle file '" + oracleFile + "'");
+						System.exit(1);
+					}
 				} else {
-					logger.warning("Maybe Wrong config line: " + line);
+					logger.warning("WARNING: unknown configuration parameter '" + fds[0] + "'");
+					// System.exit(1);
 				}
 				
 				
@@ -680,7 +657,6 @@ public class JoshuaConfiguration {
 					if(new Double(fds[1].trim())!=0){
 						use_max_lm_cost_for_oov = true;
 					}
-					logger.info("you use a LM feature function, so make sure you have a LM grammar");
 					logger.info("useMaxLMCostForOOV=" + use_max_lm_cost_for_oov);
 				} 
 			}
@@ -697,6 +673,16 @@ public class JoshuaConfiguration {
 				logger.info("linearCorpusGainThetas does not have five values, did you set googleBLEUWeights properly?");
 				System.exit(1);
 			}
+		}
+	}
+
+	/**
+	 * Checks for invalid variable configurations
+	 */
+	public static void sanityCheck() {
+		if (pop_limit > 0 && useBeamAndThresholdPrune) {
+			System.err.println("* FATAL: 'pop-limit' >= 0 is incompatible with 'useBeamAndThresholdPrune'");
+			System.exit(0);
 		}
 	}
 }

@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.TreeMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -53,7 +54,7 @@ class Cell {
 //===============================================================	
 	private Chart chart = null;
 	
-	public BeamPruner<HGNode> beamPruner;//TODO: CubePruneCombiner access this
+	public BeamPruner<HGNode> beamPruner = null;
 	
 	private int goalSymID;
 	private int constraintSymbolId;
@@ -178,7 +179,7 @@ class Cell {
 	) {
 		HGNode res = null;
 		
-		HashMap<Integer,DPState> dpStates = result.getDPStates();
+		TreeMap<Integer,DPState> dpStates = result.getDPStates();
 		double expectedTotalLogP  = result.getExpectedTotalLogP(); // including outside estimation
 		double transitionLogP    = result.getTransitionTotalLogP();
 		double finalizedTotalLogP = result.getFinalizedTotalLogP();

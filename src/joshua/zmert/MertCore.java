@@ -17,15 +17,37 @@
  */
 
 package joshua.zmert;
-import joshua.decoder.*;
-import java.util.*;
-import java.io.*;
-import java.util.zip.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.text.DecimalFormat;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Random;
+import java.util.Scanner;
+import java.util.TreeSet;
+import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
+
+import joshua.decoder.JoshuaDecoder;
 
 public class MertCore
 {
@@ -664,7 +686,6 @@ public double[] run_single_iteration(
 
       int[] candCount = new int[numSentences];
       int[] lastUsedIndex = new int[numSentences];
-      @SuppressWarnings("unchecked")
       ConcurrentHashMap<Integer,int[]>[] suffStats_array = new ConcurrentHashMap[numSentences];
       for (int i = 0; i < numSentences; ++i) {
         candCount[i] = 0;
@@ -1449,6 +1470,10 @@ public double[] run_single_iteration(
       line = inFile_nbest.readLine();
 
       while (line != null) {
+
+		  // skip blank lines
+		  if (line.equals(""))
+			  continue;
 
 /*
 line format:
@@ -2405,10 +2430,10 @@ i ||| words of candidate translation . ||| feat-1_val feat-2_val ... feat-numPar
 
     if (refsPerSen > 1) {
       // the provided refFileName might be a prefix
-      File dummy = new File(refFileName);
-      if (!dummy.exists()) {
+      // File dummy = new File(refFileName);
+      // if (!dummy.exists()) {
         refFileName = createUnifiedRefFile(refFileName,refsPerSen);
-      }
+      // }
     } else {
       checkFile(refFileName);
     }

@@ -20,7 +20,7 @@ package joshua.decoder.hypergraph;
 import java.util.ArrayList;
 import java.util.List;
 
-import joshua.corpus.vocab.SymbolTable;
+import joshua.corpus.Vocabulary;
 import joshua.decoder.ff.tm.Rule;
 
 
@@ -32,7 +32,7 @@ import joshua.decoder.ff.tm.Rule;
 public class ViterbiExtractor  {
 
 //	get one-best string under item
-	public static String extractViterbiString(SymbolTable symbolTable, HGNode node) {
+	public static String extractViterbiString(HGNode node) {
 		StringBuffer res = new StringBuffer();
 		
 		HyperEdge edge = node.bestHyperedge;
@@ -42,16 +42,16 @@ public class ViterbiExtractor  {
 			if (edge.getAntNodes().size() != 1) {
 				throw new RuntimeException("deduction under goal item have not equal one item");
 			}
-			return extractViterbiString(symbolTable, edge.getAntNodes().get(0));
+			return extractViterbiString(edge.getAntNodes().get(0));
 		}
 		int[] english = rl.getEnglish();
 		for (int c = 0; c < english.length; c++) {
-			if (symbolTable.isNonterminal(english[c])) {
-				int id = symbolTable.getTargetNonterminalIndex(english[c]);
+			if (Vocabulary.idx(english[c])) {
+				int id = -(english[c] + 1);
 				HGNode child = (HGNode)edge.getAntNodes().get(id);
-				res.append(extractViterbiString(symbolTable, child));
+				res.append(extractViterbiString(child));
 			} else {
-				res.append(symbolTable.getWord(english[c]));
+				res.append(Vocabulary.word(english[c]));
 			}
 			if (c < english.length-1) res.append(' ');
 		}
@@ -63,6 +63,29 @@ public class ViterbiExtractor  {
 		HyperGraph res = new HyperGraph(cloneNodeWithBestHyperedge(hg_in.goalNode), -1, -1, hg_in.sentID, hg_in.sentLen); // TODO: number of items/deductions
 		get1bestTreeNode(res.goalNode);
 		return res;
+	}
+
+	/**
+	 * This function recursively visits the nodes of the Viterbi
+	 * derivation in a depth-first traversal, applying the walker to
+	 * each of the nodes.  It provides a more general framework for
+	 * implementing operations on a tree.
+	 *
+	 * @param node the node to start traversal from
+	 * @param walker an implementation of the ViterbieWalker
+	 * interface, to be applied to each node in the tree
+	 */
+	public static void walk(HGNode node, WalkerFunction walker) {
+		// apply the walking function to the node
+		walker.apply(node);
+
+		// recurse on the anterior nodes of the best hyperedge
+		HyperEdge bestEdge = node.bestHyperedge;
+		if (null != bestEdge.getAntNodes()) {
+			for (HGNode antNode : bestEdge.getAntNodes()) {
+				walk(antNode, walker);
+			}
+		}
 	}
 	
 	private static void get1bestTreeNode(HGNode it) {
@@ -76,7 +99,7 @@ public class ViterbiExtractor  {
 			}
 		}
 	}
-	
+
 	// TODO: tbl_states
 	private static HGNode cloneNodeWithBestHyperedge(HGNode inNode) {
 		List<HyperEdge> hyperedges = new ArrayList<HyperEdge>(1);
