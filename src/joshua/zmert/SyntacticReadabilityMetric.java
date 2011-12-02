@@ -206,7 +206,6 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 
     @Override
 	public double worstPossibleScore() {
-	//TODO verify this
 	return 0;
     }
 
@@ -245,7 +244,7 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 	    System.err.println("Error closing the file writer for "+ pathToParses);
 	}
 	int[] stats = new int[suffStatsCount];
-	int[] gl_stats = super.suffStats(cand_str,i);
+	int[] gl_stats = gradeLevel.suffStats(cand_str,i);
 
 	// get all of the stats from the grade level metric
 	for (int j = 0; j < gl_stats.length; j++) {
