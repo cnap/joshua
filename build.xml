@@ -53,7 +53,7 @@
 <!-- ~~~~~ Init build task ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
 
 	<!-- Create the build directory for compiled class files -->
-	<target name="init">
+	<target name="init" depends="set-joshua-home">
 		<tstamp/>
 		<mkdir dir="${build}"/>
 		<mkdir dir="${lib}"/>
@@ -61,12 +61,12 @@
 	
 	<!-- Check for environment variables -->
 	<target name="set-joshua-home" unless="env.JOSHUA">
-		<fail message="Please set the $JOSHUA environmant variable." />
+		<fail message="Please set the $JOSHUA environment variable." />
 	</target>
 	
 	<!-- Check for environment variables -->
 	<target name="set-java-home" unless="env.JAVA_HOME">
-		<fail message="Please set the $JAVA_HOME environmant variable." />
+		<fail message="Please set the $JAVA_HOME environment variable." />
 		<!-- TODO: add suggestion to use /System/Library/Frameworks/JavaVM.framework/Home/ iff on OSX --> 
 	</target>
 	
@@ -81,7 +81,7 @@
 		</exec>
 	</target>
 		
-	<target name="giza" depends="init">
+	<target name="giza" depends="init, set-joshua-home">
 	  <exec executable="make">
 			<arg value="-j" />
 			<arg value="4" />
@@ -89,6 +89,11 @@
 		<arg value="scripts/training/giza-pp/" />
 		<arg value="all" />
 		<arg value="install" />
+	  </exec>
+	  <exec executable="make">
+		<arg value="-C" />
+		<arg value="scripts/training/symal/" />
+		<arg value="all" />
 	  </exec>
 <!-- 	  <exec executable="./configure" dir="scripts/training/MGIZA" /> -->
 <!-- 	  <exec executable="make"> -->
@@ -99,7 +104,7 @@
 <!--       </exec> -->
 	</target>
 
-	<target name="parallelize">
+	<target name="parallelize" depends="set-joshua-home">
 		<exec executable="make">
 			<arg value="-j" />
 			<arg value="4" />
@@ -108,7 +113,7 @@
 		</exec>
 	</target>
 
-	<target name="thrax">
+	<target name="thrax" depends="set-joshua-home">
 	  <exec executable="git">
 	    <arg value="submodule" />
 	    <arg value="init" />
@@ -159,6 +164,21 @@
 		</jar>
 	</target>
 	
+	<target name="tree_visualizer" depends="compile,set-joshua-home">
+		<jar destfile="tree_visualizer/tree_visualizer.jar" index="true">
+		        <zipgroupfileset dir="lib" includes="*.jar"/>
+			<fileset dir="${build}">
+				<include name="**/*.class"/>
+			</fileset>
+			<indexjars>
+			  <fileset dir="${lib}"/>
+			</indexjars>
+			<manifest>
+			  <attribute name="Class-Path" value="tree_visualizer.jar"/>
+			  <attribute name="Main-Class" value="joshua.ui.tree_visualizer.browser.Browser"/>
+			</manifest>
+		</jar>
+	</target>
 	
 	<!-- Create a JAR file of the source code -->
 	<target name="source-jar">
@@ -173,7 +193,7 @@
 <!-- ~~~~~ Cleaning tasks ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
 	
 	<!-- Delete the compiled files -->
-	<target name="clean">
+	<target name="clean" depends="clean-java">
 		<exec executable="make">
 			<arg value="-C" />
 			<arg value="scripts/training/giza-pp" />
@@ -182,13 +202,16 @@
 		<exec executable="/bin/bash" dir="src/joshua/decoder/ff/lm/kenlm">
 			<arg value="clean.sh" />
 		</exec>
+	</target>
+
+	<!-- Delete just the java files -->
+	<target name="clean-java">
 		<delete verbose="true" quiet="true">
 			<fileset dir="${build}">
 				<include name="**/*.class"/>
 			</fileset>
 		</delete>
 	</target>
-	
 	
 	<!-- EXPERIMENTAL: Delete *all* generated files -->
 	<target name="distclean" depends="clean">
@@ -216,6 +239,12 @@
 		</delete>
 		
 		<delete verbose="true" quiet="true" file="joshua-fb.xml" />
+
+		<delete verbose="true" quiet="true" includeEmptyDirs="true">
+			<fileset dir="tree_visualizer">
+				<include name="tree_visualizer.jar"/>
+			</fileset>
+		</delete>
 	</target>
 	
 	

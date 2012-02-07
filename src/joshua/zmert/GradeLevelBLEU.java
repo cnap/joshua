@@ -15,10 +15,12 @@ public class GradeLevelBLEU extends BLEU {
 	private String[] srcSentences;
 	private Pattern syllable = Pattern.compile("(^[aeiouy]*[aeiouy]+)"); // matches C*V+
 	private Pattern silentE = Pattern.compile("^[aeiou]e$");
-	private Pattern wordPattern = Pattern.compile("[a-zA-Z]+");
+	//	private Pattern wordPattern = Pattern.compile("[a-zA-Z]+");
 	private int SOURCE = 0, CANDIDATE = 1, REFERENCE = 2;
-	//	private final int CAND_TOKEN_LEN=0,CAND_WORD_LEN=1,CAND_SYLL_LEN=2,REF_TOKEN_LEN=3,REF_WORD_LEN=4,REF_SYLL_LEN=5,SRC_TOKEN_LEN=6,SRC_WORD_LEN=7,SRC_SYLL_LEN=8;
 	private boolean usePenalty = true;
+	double targetScore = 6.419; // tune.en avg GL = 6.419, tune.simp avg GL = 5.005
+	private boolean useTarget = true;
+
 
 	public GradeLevelBLEU() {
 		super();
@@ -140,11 +142,9 @@ public class GradeLevelBLEU extends BLEU {
 		double candScore = gradeLevel(stats[tokenLength(CANDIDATE)],stats[syllableLength(CANDIDATE)]);
 		double srcScore = gradeLevel(stats[tokenLength(SOURCE)],stats[syllableLength(SOURCE)]);
 		double readabilityPenalty = 1;
-		if (usePenalty)
-			if (candScore > srcScore) {readabilityPenalty = Math.exp(srcScore-candScore);
-
-			//			readabilityPenalty  = candScore / srcScore;
-			}
+		if (usePenalty && candScore > srcScore) readabilityPenalty = Math.exp(srcScore-candScore);
+		if (useTarget && candScore >= targetScore) readabilityPenalty = 0;
+		//			readabilityPenalty  = candScore / srcScore;
 
 		// to add a "readability penalty", set readabilityPenalty = < 1 if the candidate has a higher grade level than the source
 
@@ -178,8 +178,9 @@ public class GradeLevelBLEU extends BLEU {
 		double source_gl = gradeLevel(stats[tokenLength(SOURCE)],stats[syllableLength(SOURCE)]);
 		double cand_gl = gradeLevel(stats[tokenLength(CANDIDATE)],stats[syllableLength(CANDIDATE)]);
 		double penalty = 1;
-		if (cand_gl > source_gl)
-			penalty = Math.exp(source_gl - cand_gl);
+		if (usePenalty && cand_gl > source_gl) penalty = Math.exp(source_gl - cand_gl);
+		if (useTarget && cand_gl >= targetScore) penalty = 0;
+
 		System.out.print("\tREF_GL = "+df.format(gradeLevel(stats[tokenLength(REFERENCE)],stats[syllableLength(REFERENCE)])));
 		System.out.print("\tCAND_GL = "+df.format(cand_gl));
 		System.out.print("\tSRC_GL = "+df.format(source_gl));

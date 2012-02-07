@@ -19,6 +19,7 @@ public class GradeLevelMetric extends EvaluationMetric {
 	private final int SRC_TOKEN_LEN=4;
 	private final int SRC_SYLL_LEN=5;
 	protected int use_penalty = 0;
+	double target = 10.0; //
 
 	public GradeLevelMetric() {
 		initialize();
