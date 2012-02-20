@@ -71,8 +71,9 @@ public abstract class EvaluationMetric
 		metricOptionCount.put("MRC_BLEU",4);
 		metricOptionCount.put("COMP_BLEU",5);
 		metricOptionCount.put("GRADE_LEVEL",2); // this expects a path to the source sentences and a binary flag for penalty (0=no penalty)
-		metricOptionCount.put("GL_BLEU",3); // this expects the BLEU options and  a path to the source sentences
+		metricOptionCount.put("GL_BLEU",4); // this expects the BLEU options and  a target GL rate (if target == -1 will use default target) and a path to the source sentences
 		metricOptionCount.put("SYN_READ",2); // options: same as GRADE_LEVEL
+		metricOptionCount.put("SYN_SIMP",4); // this expects the BLEU options and  a path to the source sentences and a target syn_simp score (if target == -1 will use default target)
 
 	}
 

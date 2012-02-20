@@ -18,7 +18,8 @@ public class GradeLevelBLEU extends BLEU {
 	//	private Pattern wordPattern = Pattern.compile("[a-zA-Z]+");
 	private int SOURCE = 0, CANDIDATE = 1, REFERENCE = 2;
 	private boolean usePenalty = true;
-	double targetScore = 6.419; // tune.en avg GL = 6.419, tune.simp avg GL = 5.005
+//	double targetScore = 6.419; // tune.en avg GL = 6.419, tune.simp avg GL = 5.005
+	double targetScore = 5.005; // tune.en avg GL = 6.419, tune.simp avg GL = 5.005
 	private boolean useTarget = true;
 
 
@@ -29,12 +30,14 @@ public class GradeLevelBLEU extends BLEU {
 	public GradeLevelBLEU(String[] options) {
 		// there are 3 arguments: the two for BLEU and one for the source sentences
 		super(options);
+		if (Integer.parseInt(options[2]) > 0) targetScore = Integer.parseInt(options[2]);
 		try {
-			loadSources(options[2]);
+			loadSources(options[3]);
 		} catch (IOException e) {
 			logger.severe("Error loading the source sentences from "+options[2]);
 			System.exit(1);
 		}
+		//TODO set target GL
 		initialize();
 	}
 

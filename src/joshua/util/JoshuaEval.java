@@ -507,7 +507,7 @@ line format:
 		
 	} // createUnifiedRefFile(String prefix, int numFiles)
 	
-	private static String normalize(String str, int normMethod)
+	protected static String normalize(String str, int normMethod)
 	{
 		if (normMethod == 0) return str;
 		
