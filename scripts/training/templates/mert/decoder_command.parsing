@@ -1,5 +1,4 @@
-cat <INPUT> | <JOSHUA>/joshua-decoder -m <MEM> -threads <NUMTHREADS> -c <CONFIG> > <OUTPUT>.temp 2> <LOG>
+cat <INPUT> | <JOSHUA>/joshua-decoder -m <MEM> -threads <NUMTHREADS> -c <CONFIG> > <OUTPUT> 2> <LOG>
 
-cat <OUTPUT>.temp | java -Xmx8g -jar $JOSHUA/lib/BerkeleyParser.jar -gr $JOSHUA/lib/eng_sm6.gr -nThreads <NUMTHREADS> | sed 's/^\(/\(TOP/' | tee $ARGV[0].parsed.mc | perl -pi -e 's/(\\S+)\\)/lc(\$1).\")\"/ge' | tee <OUTPUT>
+cat <OUTPUT> | java -Xmx8g -jar $JOSHUA/lib/BerkeleyParser.jar -gr $JOSHUA/lib/eng_sm6.gr -nThreads <NUMTHREADS> > parsed_nbest
 
-rm <OUTPUT>.temp

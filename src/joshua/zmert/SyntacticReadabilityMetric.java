@@ -17,29 +17,26 @@ import edu.stanford.nlp.trees.Tree;
 import edu.stanford.nlp.trees.TreePrint;
 
 public class SyntacticReadabilityMetric extends GradeLevelMetric{
-	private Tree [] srcParses;
+	private int[][] srcParseStats;
+	private boolean[] srcStatsLoaded;
 	private final HashSet<String> PHRASE_LABELS = new HashSet<String>(Arrays.asList("ADJP,ADVP,CONJP,INTJ,NP,PP,PRN,QP,RRC,UCP,VP,WHADJP,WHAVP,WHNP,WHPP".split(",")));
 	private final HashSet<String> CLAUSE_LABELS = new HashSet<String>(Arrays.asList("S,SBAR,SBARQ,SINV,SQ".split(",")));
 	private static HashMap<String,String> stems;
 	private static HashSet<String> BASIC_WORDS;
-	String basicFilePath = "research/simplification/data/be850";
-	String wordFrequencyFilePath = "research/simplification/data/word_frequencies";
-	String grammarPath = "research/simplification/data/englishPCFG.ser.gz";
 	private static SnowballStemmer stemmer;
 	private static HashMap<String,Integer> wordFrequencies;
 	List<Integer> frequencies;
 	private final int LOWEST_FREQUENCY = 75000;
+	String pathToParses;
 	HashMap<String,Integer> ntCounts;
-	final int SYNTACTIC_FEATURE_COUNT = 12;
-	final int GL_FEATURE_COUNT = 6;
 	LexicalizedParser parser;
-	String pathToParses = "parsed_nbest_list";
 	TreePrint constituentTreePrinter;
 	Runtime r;
 	FileWriter parseWriter;
 
 	HashMap<String,String> parseMap;
 
+	// max ~11.18
 	final double[] weight = {
 			3.69502835452864,
 			1.26044509901525,
@@ -52,15 +49,11 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 			0.447413473942941,
 			1.23089145652181, };
 
-
+	//	flags for normalization:
 	final int HEIGHT_RATIO = -1, VP_NP_RATIO = -2, NORM_GRADE_LEVEL = -3, NORM_MEDIAN = -4, NORM_RIGHT_BRANCH = -5;
-	final int HEIGHT = 6,TOTAL_HEIGHT = 7,NUM_PHRASES = 8, NUM_NPS = 9, NUM_VPS = 10, NUM_PPS = 11, NUM_APS = 12, NUM_BASIC_WORDS = 13, NUM_WORDS = 14, NUM_CLAUSES = 15, MEDIAN = 16, RIGHT_BRANCH = 17;
-	//from parent: CAND_TOKEN_LEN=0,CAND_SYLL_LEN=1,REF_TOKEN_LEN=2,REF_SYLL_LEN=3,SRC_TOKEN_LEN=4,SRC_SYLL_LEN=5;
-	/* data from parent:
-       int numSentences;
-       int refsPerSen;
-       String[][] refSentences;
-	 */
+	final int FEATURE_COUNT = 14;
+	// features (14 total):
+	final int TOKEN_LEN = 0, SYLL_LEN = 1, HEIGHT = 2, TOTAL_HEIGHT = 3,NUM_PHRASES = 4, NUM_NPS = 5, NUM_VPS = 6, NUM_PPS = 7, NUM_APS = 8, NUM_BASIC_WORDS = 9, NUM_WORDS = 10, NUM_CLAUSES = 11, MEDIAN = 12, RIGHT_BRANCH = 13;
 
 	public SyntacticReadabilityMetric() {
 		super();
@@ -68,20 +61,12 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 
 	public SyntacticReadabilityMetric(String[] options) {
 		super(options);
-		initialize();
 	}
 
 	@Override
 	public void initialize() {
 		stems = new HashMap<String,String>();
 		stemmer = new englishStemmer();
-		basicFilePath = "research/simplification/data/be850";
-		wordFrequencyFilePath = "research/simplification/data/word_frequencies";
-		grammarPath = "research/simplification/data/englishPCFG.ser.gz";
-		String homeDir = System.getenv().get("HOME");
-		basicFilePath = homeDir +"/"+basicFilePath;
-		wordFrequencyFilePath = homeDir + "/" + wordFrequencyFilePath;
-		grammarPath = homeDir + "/" + grammarPath;
 
 		try {
 			loadBasicWords();
@@ -92,26 +77,26 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 			System.exit(1);
 		}
 
-		srcParses = new Tree[numSentences];
-		for (int i = 0; i < numSentences; i++) {
-			srcSentences[i] = removeErroneousSpace(srcSentences[i]);
-			srcParses[i] = parse(srcSentences[i]);
-		}
-
 		metricName = "SYN_READ";
 		toBeMinimized = false;
-		suffStatsCount = SYNTACTIC_FEATURE_COUNT + GL_FEATURE_COUNT;
+		suffStatsCount = FEATURE_COUNT * 2;
+
+		srcParseStats = new int[numSentences][FEATURE_COUNT];
+		srcStatsLoaded = new boolean[numSentences];
+		// these will be loaded when suffstats are calculated, so the boolean
+		// flags keep track of what's been calculated to avoid redundancies
+		// i think.
 	}
 
 	private void initializeParser() throws Exception {
 		r = Runtime.getRuntime();
 		constituentTreePrinter = new TreePrint("oneline");
-		parser = new LexicalizedParser(grammarPath);
+		parser = new LexicalizedParser(this.getClass().getResource("/joshua/zmert/resources/englishPCFG.ser.gz").getPath());
 		loadExistingParses();
 	}
 
 	private void loadExistingParses() throws Exception {
-		pathToParses = System.getProperty("user.dir")+"/"+pathToParses;
+		pathToParses = System.getProperty("user.dir")+"/parsed_nbest_list";
 		File f = new File(pathToParses);
 		parseMap = new HashMap<String,String>();
 		if (!f.createNewFile()) {
@@ -120,7 +105,7 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 			String[] fields;
 			while ( (line=br.readLine()) != null ) {
 				fields = line.split("\\|\\|\\|");
-				fields[0] = removeErroneousSpace(fields[0]);
+				fields[0] = removeExtraSpace(fields[0]);
 				parseMap.put(fields[0],fields[1]);
 			}
 		}
@@ -128,7 +113,7 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 		parseWriter = new FileWriter(pathToParses,true);
 	}
 
-	public String removeErroneousSpace(String s) {
+	public String removeExtraSpace(String s) {
 		return s.trim().replaceAll("\\s+"," ");
 	}
 
@@ -151,9 +136,16 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 		return t;
 	}
 
+
 	private void loadBasicWords() throws IOException {
 		BASIC_WORDS = new HashSet<String>();
-		BufferedReader br = new BufferedReader(new FileReader(basicFilePath));
+		InputStream in = this.getClass().getResourceAsStream("/joshua/zmert/resources/be850.txt");
+		if (in == null) {
+			System.err.println("Failed to load resource be850.txt");
+			System.exit(1);
+		}
+
+		BufferedReader br = new BufferedReader(new InputStreamReader(in));
 		String line;
 		while ( (line = br.readLine()) != null) {
 			BASIC_WORDS.add(getStem(line));
@@ -163,7 +155,13 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 
 	private void loadWordFrequencies() throws IOException {
 		wordFrequencies = new HashMap<String,Integer>();
-		BufferedReader br = new BufferedReader(new FileReader(wordFrequencyFilePath));
+		InputStream in = this.getClass().getResourceAsStream("/joshua/zmert/resources/word_frequencies.txt");
+		if (in == null) {
+			System.err.println("Failed to load resource word_frequencies.txt");
+			System.exit(1);
+		}
+
+		BufferedReader br = new BufferedReader(new InputStreamReader(in));
 		String line;
 		int count = 0;
 		while ( (line = br.readLine()) != null) {
@@ -221,8 +219,6 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 
 	@Override
 	public int[] suffStats(String cand_str, int i) {
-		cand_str = removeErroneousSpace(cand_str);
-		Tree tree = parse(cand_str);
 		try {
 			if (i == numSentences -2) {
 				parseWriter.close();
@@ -232,13 +228,40 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 		}
 		int[] stats = new int[suffStatsCount];
 
-		int[] gl_stats = super.suffStats(cand_str,i);
+		int[] temp_stats = 	calculateStatistics(cand_str);
+		for (int j = 0; j < FEATURE_COUNT; j++) {
+			stats[j] = temp_stats[j];
+		}
+		if (!srcStatsLoaded[i]) {
+			temp_stats = calculateStatistics(srcSentences[i]);
+			for (int j = 0; j < FEATURE_COUNT; j++) {
+				srcParseStats[i][j] = temp_stats[j];
+			}
+			srcStatsLoaded[i] = true;
+		}
+		for (int j = 0; j < FEATURE_COUNT; j++) {
+			stats[j+FEATURE_COUNT] = srcParseStats[i][j];
+		}
+		return stats;
+	}
 
-		// get all of the stats from the grade level metric
-		for (int j = 0; j < gl_stats.length; j++) {
-			stats[j] = gl_stats[j];
+	public int[] calculateStatistics(String cand_str) {
+		cand_str = removeExtraSpace(cand_str);
+		Tree tree = parse(cand_str);
+
+		int[] stats = new int[FEATURE_COUNT];
+		String[] candidate_tokens;
+		if (!cand_str.equals("")) candidate_tokens = cand_str.split("\\s+");
+		else candidate_tokens = new String[0];
+
+		// drop "_OOV" marker
+		for (int j = 0; j < candidate_tokens.length; j++) {
+			if (candidate_tokens[j].endsWith("_OOV"))
+				candidate_tokens[j] = candidate_tokens[j].substring(0, candidate_tokens[j].length() - 4);
 		}
 
+		stats[TOKEN_LEN] = candidate_tokens.length;
+		stats[SYLL_LEN] = countTotalSyllables(candidate_tokens);
 		ntCounts = new HashMap<String, Integer>();
 		int height = tree.depth();
 		int total_height = 0;
@@ -309,20 +332,23 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 		return ( values.get(values.size()/2-1) + values.get(values.size()/2) ) / 2;
 	}
 
-	public double[] getScores(int[] stats) {
+	// source = 0 if scoring the candidate, = 1 if scoring the source sentence
+	public double[] getScores(int[] stats, int source) {
+		int start = source*FEATURE_COUNT;
 		double[] scores = new double[10];
-		scores[0] = normalize(1.0 * stats[HEIGHT] / stats[TOTAL_HEIGHT], HEIGHT_RATIO);
-		scores[1] = normalize(1.0 * stats[NUM_PHRASES] / stats[CAND_TOKEN_LEN], 0);
-		scores[2] = normalize(1.0 * stats[NUM_VPS] / stats[NUM_NPS], VP_NP_RATIO);
-		scores[3] = normalize(stats[RIGHT_BRANCH], NORM_RIGHT_BRANCH);
-		scores[4] = 1.0 * stats[NUM_BASIC_WORDS] / stats[NUM_WORDS];
-		scores[5] = normalize(stats[MEDIAN], NORM_MEDIAN);
-		scores[6] = normalize(1.0 * stats[CAND_TOKEN_LEN] / stats[CAND_SYLL_LEN], 0);
-		scores[7] = normalize(gradeLevel(CAND_TOKEN_LEN, CAND_SYLL_LEN), NORM_GRADE_LEVEL);
-		scores[8] = normalize(1.0 * stats[NUM_APS] / stats[NUM_NPS], VP_NP_RATIO);
-		scores[9] = normalize(1.0 * stats[NUM_PPS] / stats[NUM_NPS], VP_NP_RATIO);
+		scores[0] = normalize(1.0 * stats[HEIGHT+start] / stats[TOTAL_HEIGHT+start], HEIGHT_RATIO);
+		scores[1] = normalize(1.0 * stats[NUM_PHRASES+start] / stats[TOKEN_LEN+start], 0);
+		scores[2] = normalize(1.0 * stats[NUM_VPS+start] / stats[NUM_NPS+start], VP_NP_RATIO);
+		scores[3] = normalize(stats[RIGHT_BRANCH+start], NORM_RIGHT_BRANCH);
+		scores[4] = 1.0 * stats[NUM_BASIC_WORDS+start] / stats[NUM_WORDS+start];
+		scores[5] = normalize(stats[MEDIAN+start], NORM_MEDIAN);
+		scores[6] = normalize(1.0 * stats[TOKEN_LEN+start] / stats[SYLL_LEN+start], 0);
+		scores[7] = normalize(gradeLevel(stats[TOKEN_LEN+start], stats[SYLL_LEN+start]), NORM_GRADE_LEVEL);
+		scores[8] = normalize(1.0 * stats[NUM_APS+start] / stats[NUM_NPS+start], VP_NP_RATIO);
+		scores[9] = normalize(1.0 * stats[NUM_PPS+start] / stats[NUM_NPS+start], VP_NP_RATIO);
 		return scores;
 	}
+
 
 	public double getWeightedScore(double[] scores) {
 		double weightedScore = 0;
@@ -331,17 +357,29 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 		}
 		return weightedScore;
 	}
+
 	@Override
 	public double score(int[] stats) {
-		double [] scores = getScores(stats);
-		return getWeightedScore(scores);
+		double [] scores = getScores(stats,0);
+		double [] sourceScores = getScores(stats,1);
+		double candScore = getWeightedScore(scores);
+		double sourceScore = getWeightedScore(sourceScores);
+		double penalty = 1.0;
+		if (use_penalty == 1) {
+			if (sourceScore > candScore) {
+				penalty = Math.exp(candScore - sourceScore);
+			}
+		}
+		return candScore * penalty;
 	}
 
 	@Override
 	public void printDetailedScore_fromStats(int[] stats, boolean oneLiner) {
+		double candScore = getWeightedScore(getScores(stats,0));
+		double srcScore = getWeightedScore(getScores(stats,1));
 		if (!oneLiner) {
-			double[] scores = getScores(stats);
-			System.out.println("WEIGHTED SCORE = "+getWeightedScore(scores));
+			double[] scores = getScores(stats,0);
+			System.out.println("WEIGHTED SCORE = "+score(stats));
 			System.out.println();
 			System.out.println("   HEIGHT RATIO       = "+scores[0]);
 			System.out.println("   PHRASE/TOKEN RATIO = "+scores[1]);
@@ -353,9 +391,19 @@ public class SyntacticReadabilityMetric extends GradeLevelMetric{
 			System.out.println("   MEDIAN FREQUENCY   = "+stats[MEDIAN]);
 			System.out.println("   AVG SYLLABLE/TOKEN = "+ (1.0/stats[6]));
 			System.out.println("   % BASIC WORDS      = "+stats[4]);
+			System.out.println("SOURCE SCORE = "+srcScore);
 		}
 		else {
-			System.out.println("WEIGHTED SCORE = "+score(stats));
+			double penalty = 1.0;
+			if (use_penalty == 1) {
+				if (srcScore > candScore) {
+					penalty = Math.exp(candScore - srcScore);
+					//					System.out.println("Using penalty "+penalty);
+				}
+
+			}
+			System.out.println("WEIGHTED SCORE = "+score(stats)+"\tSRC = "+srcScore+"\tPENALTY = "+penalty);
+
 		}
 	}
 }
