@@ -14,9 +14,7 @@ import java.util.regex.Pattern;
 import org.tartarus.snowball.SnowballStemmer;
 import org.tartarus.snowball.ext.englishStemmer;
 
-import edu.stanford.nlp.parser.lexparser.LexicalizedParser;
-import edu.stanford.nlp.trees.Tree;
-import edu.stanford.nlp.trees.TreePrint;
+import edu.berkeley.nlp.parser.*;
 
 public class SyntacticSimplicityMetric extends BLEU {
 	private int[][] srcParseStats;
@@ -33,8 +31,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 	private final int LOWEST_FREQUENCY = 75000;
 	String pathToParses;
 	HashMap<String,Integer> ntCounts;
-	LexicalizedParser parser;
-	TreePrint constituentTreePrinter;
+	Parser parser;
 	Runtime r;
 	FileWriter parseWriter;
 	private String[] srcSentences;
@@ -126,6 +123,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 
 	private void initializeParser() throws Exception {
 		r = Runtime.getRuntime();
+		parser = new 
 		constituentTreePrinter = new TreePrint("oneline");
 		parser = new LexicalizedParser(this.getClass().getResource("/joshua/zmert/resources/englishPCFG.ser.gz").getPath());
 		loadExistingParses();
