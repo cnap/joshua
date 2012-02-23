@@ -903,7 +903,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 	open FROM, $file or die "can't find file '$file'";
 	open TO, ">$mertdir/$key" or die "can't write to file '$mertdir/$key'";
 	while (<FROM>) {
-	  s/<INPUT>/$TUNE{source}/g;
+	  s/<INPUT>/$TUNE{source}.parsed/g;
 	  s/<SOURCE>/$SOURCE/g;
 	  s/<RUNDIR>/$RUNDIR/g;
 	  s/<TARGET>/$TARGET/g;
@@ -938,7 +938,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 
   # run MERT
   $cachepipe->cmd("mert-$run",
-				  "java -d64 -Xmx2g -cp $JOSHUA/bin joshua.zmert.ZMERT -maxMem 4500 $mertdir/mert.config > $mertdir/mert.log 2>&1",
+				  "java -d64 -Xmx2g -cp $JOSHUA/bin:$JOSHUA/lib/libstemmer.jar:$JOSHUA/lib/stanford-corenlp-2011-09-16.jar joshua.zmert.ZMERT -maxMem 4500 $mertdir/mert.config > $mertdir/mert.log 2>&1",
 				  $TUNE_GRAMMAR,
 				  "$mertdir/joshua.config.ZMERT.final",
 				  "$mertdir/decoder_command",
@@ -1015,7 +1015,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 	open FROM, $file or die "can't find file '$file'";
 	open TO, ">$testrun/$key" or die "can't write to '$testrun/$key'";
 	while (<FROM>) {
-	  s/<INPUT>/$TEST{source}/g;
+	  s/<INPUT>/$TEST{source}.parsed/g;
 	  s/<NUMJOBS>/$NUM_JOBS/g;
 	  s/<NUMTHREADS>/$NUM_THREADS/g;
 	  s/<QSUB_ARGS>/$QSUB_ARGS/g;

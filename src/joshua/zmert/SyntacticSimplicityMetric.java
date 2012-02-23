@@ -14,7 +14,9 @@ import java.util.regex.Pattern;
 import org.tartarus.snowball.SnowballStemmer;
 import org.tartarus.snowball.ext.englishStemmer;
 
-import edu.berkeley.nlp.parser.*;
+import edu.stanford.nlp.parser.lexparser.LexicalizedParser;
+import edu.stanford.nlp.trees.Tree;
+import edu.stanford.nlp.trees.TreePrint;
 
 public class SyntacticSimplicityMetric extends BLEU {
 	private int[][] srcParseStats;
@@ -31,7 +33,8 @@ public class SyntacticSimplicityMetric extends BLEU {
 	private final int LOWEST_FREQUENCY = 75000;
 	String pathToParses;
 	HashMap<String,Integer> ntCounts;
-	Parser parser;
+	LexicalizedParser parser;
+	TreePrint constituentTreePrinter;
 	Runtime r;
 	FileWriter parseWriter;
 	private String[] srcSentences;
@@ -76,6 +79,9 @@ public class SyntacticSimplicityMetric extends BLEU {
 		//			System.exit(1);
 		//		}
 		sourceFilename = options[3];
+		try {
+		    loadSources();
+		} catch (Exception e) { System.err.println("Error loading sources from sourceFilename"); System.exit(1); }
 		initialize();
 	}
 
@@ -85,8 +91,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 		stemmer = new englishStemmer();
 
 		try {
-			loadSources();
-			loadBasicWords();
+		    loadBasicWords();
 			loadWordFrequencies();
 			initializeParser();
 		} catch (Exception e) {
@@ -123,7 +128,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 
 	private void initializeParser() throws Exception {
 		r = Runtime.getRuntime();
-		parser = new 
+		//		parser = new
 		constituentTreePrinter = new TreePrint("oneline");
 		parser = new LexicalizedParser(this.getClass().getResource("/joshua/zmert/resources/englishPCFG.ser.gz").getPath());
 		loadExistingParses();
@@ -140,8 +145,8 @@ public class SyntacticSimplicityMetric extends BLEU {
 			String line;
 			String[] fields;
 			while ( (line=br.readLine()) != null ) {
-				fields = line.split("\\|\\|\\|");
-//				fields[0] = normalizeSpacing(fields[0]);
+				fields = line.split("\\t");
+				//				fields[0] = normalizeSpacing(fields[0]);
 				parseMap.put(fields[0],fields[1]);
 			}
 		}
@@ -163,7 +168,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 		constituentTreePrinter.printTree(t, new PrintWriter(treeStrWriter, true));
 		String parseString = treeStrWriter.toString().trim();
 		try {
-			parseWriter.write(s+" ||| "+parseString+"\n");
+			parseWriter.write(s+"\t"+parseString+"\n");
 		} catch (IOException e) {
 			System.err.println("Error writing parse to "+pathToParses);
 		}

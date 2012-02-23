@@ -18,40 +18,25 @@
 package joshua.decoder;
 
 import java.io.BufferedWriter;
-import java.io.IOException;
 import java.io.File;
-import java.util.Arrays;
+import java.io.IOException;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import joshua.decoder.segment_file.Sentence;
-
-import joshua.corpus.suffix_array.Pattern;
-import joshua.corpus.syntax.ArraySyntaxTree;
-import joshua.corpus.syntax.SyntaxTree;
-import joshua.corpus.vocab.SymbolTable;
 import joshua.decoder.chart_parser.Chart;
 import joshua.decoder.ff.FeatureFunction;
-import joshua.decoder.ff.lm.LanguageModelFF;
 import joshua.decoder.ff.state_maintenance.StateComputer;
 import joshua.decoder.ff.tm.Grammar;
 import joshua.decoder.ff.tm.GrammarFactory;
-import joshua.decoder.ff.tm.hiero.MemoryBasedBatchGrammar;
+import joshua.decoder.ff.tm.hash_based.MemoryBasedBatchGrammar;
 import joshua.decoder.hypergraph.DiskHyperGraph;
 import joshua.decoder.hypergraph.HyperGraph;
 import joshua.decoder.hypergraph.KBestExtractor;
+import joshua.decoder.segment_file.Sentence;
 import joshua.lattice.Lattice;
 import joshua.oracle.OracleExtractor;
 import joshua.ui.hypergraph_visualizer.HyperGraphViewer;
-import joshua.util.CoIterator;
-import joshua.util.FileUtility;
-import joshua.util.io.LineReader;
-import joshua.util.io.NullReader;
-import joshua.util.io.Reader;
-import joshua.util.io.UncheckedIOException;
-
 import edu.jhu.thrax.util.TestSetFilter;
 
 /**
@@ -77,20 +62,7 @@ public class DecoderThread extends Thread {
 	private final List<GrammarFactory>  grammarFactories;
 	private final List<FeatureFunction> featureFunctions;
 	private final List<StateComputer>   stateComputers;
-	
-	
-	/**
-	 * Shared symbol table for source language terminals, target
-	 * language terminals, and shared nonterminals.
-	 * <p>
-	 * It may be that separate tables should be maintained for
-	 * the source and target languages.
-	 * <p>
-	 * This class explicitly uses the symbol table to get integer
-	 * IDs for the source language sentence.
-	 */
-	private final SymbolTable    symbolTable;
-	
+		
 	//more test set specific
     private final InputHandler   inputHandler;
 	//         final String         nbestFile; // package-private for DecoderFactory
@@ -110,19 +82,16 @@ public class DecoderThread extends Thread {
 		List<GrammarFactory>  grammarFactories,
 		List<FeatureFunction> featureFunctions,
 		List<StateComputer> stateComputers,
-		SymbolTable                symbolTable,
-        InputHandler inputHandler
+		InputHandler inputHandler
 	) throws IOException {
 		
 		this.grammarFactories   = grammarFactories;
 		this.featureFunctions   = featureFunctions;
 		this.stateComputers     = stateComputers;
-		this.symbolTable        = symbolTable;
 		
         this.inputHandler    = inputHandler;
 		
 		this.kbestExtractor = new KBestExtractor(
-			this.symbolTable,
 			JoshuaConfiguration.use_unique_nbest,
 			JoshuaConfiguration.use_tree_nbest,
 			JoshuaConfiguration.include_align_index,
@@ -145,7 +114,7 @@ public class DecoderThread extends Thread {
 		// 	}
 			
 		// 	this.hypergraphSerializer = new DiskHyperGraph(
-		// 			this.symbolTable,
+		// 			Vocabulary,
 		// 			lmFeatID,
 		// 			true, // always store model cost
 		// 			this.featureFunctions);
@@ -184,26 +153,23 @@ public class DecoderThread extends Thread {
      */
 	public void translateAll() throws IOException {
 
-        for (;;) {
-
-            long startTime = System.currentTimeMillis();			
+		for (;;) {
 
             Sentence sentence = inputHandler.next();
-            if (sentence == null)
-                break;
+			if (sentence == null)
+				break;
 
-            // System.out.println("[" + sentence.id() + "] " + sentence.sentence());
             HyperGraph hypergraph = translate(sentence, null);
             Translation translation = null;
-		
+
             if (JoshuaConfiguration.visualize_hypergraph) {
-                HyperGraphViewer.visualizeHypergraphInFrame(hypergraph, symbolTable);
+                HyperGraphViewer.visualizeHypergraphInFrame(hypergraph);
             }
 		
             String oracleSentence = inputHandler.oracleSentence();
 
             if (oracleSentence != null) {
-                OracleExtractor extractor = new OracleExtractor(this.symbolTable);
+                OracleExtractor extractor = new OracleExtractor();
                 HyperGraph oracle = extractor.getOracle(hypergraph, 3, oracleSentence);
 			
                 translation = new Translation(sentence, oracle, featureFunctions);
@@ -249,15 +215,20 @@ public class DecoderThread extends Thread {
 	public HyperGraph translate(Sentence sentence, String oracleSentence)
 	throws IOException {
 
-		if (logger.isLoggable(Level.FINE))
-			logger.fine("now translating\n" + sentence.sentence());
-		
-		Chart chart; 
-		
-        Lattice<Integer> input_lattice = sentence.lattice();
+		logger.info("Translating sentence #" + sentence.id() + " [thread " + getId() + "]\n" + sentence.sentence());
 
-        if (logger.isLoggable(Level.FINEST)) 
-            logger.finest("Translating input lattice:\n" + input_lattice.toString());
+		if (sentence.isEmpty())
+			return null;
+
+		long startTime = System.currentTimeMillis();
+
+		// skip blank sentences
+		if (sentence.sentence().matches("^\\s*$")) {
+			logger.info("translation of sentence " + sentence.id() + " took 0 seconds [" + getId() + "]");
+			return null;
+		}
+		
+        Lattice<Integer> input_lattice = sentence.intLattice();
 
         int numGrammars = (JoshuaConfiguration.use_sent_specific_tm)
             ? grammarFactories.size() + 1
@@ -265,8 +236,8 @@ public class DecoderThread extends Thread {
 
         Grammar[] grammars = new Grammar[numGrammars];
 
-        for (int i = 0; i< grammarFactories.size(); i++)
-            grammars[i] = grammarFactories.get(i).getGrammarForSentence(sentence.pattern());
+        for (int i = 0; i < grammarFactories.size(); i++)
+            grammars[i] = grammarFactories.get(i).getGrammarForSentence(sentence);
 
         // load the sentence-specific grammar
         boolean alreadyExisted = true; // whether it already existed
@@ -313,7 +284,6 @@ public class DecoderThread extends Thread {
 
             grammars[numGrammars-1] = new MemoryBasedBatchGrammar(JoshuaConfiguration.tm_format,
                 tmFile,
-                this.symbolTable,
                 JoshuaConfiguration.phrase_owner,
                 JoshuaConfiguration.default_non_terminal,
                 JoshuaConfiguration.span_limit,
@@ -325,10 +295,9 @@ public class DecoderThread extends Thread {
         }
 
         /* Seeding: the chart only sees the grammars, not the factories */
-        chart = new Chart(input_lattice,
+        Chart chart = new Chart(input_lattice,
             this.featureFunctions,
             this.stateComputers,
-            this.symbolTable,
             sentence.id(),
             grammars,
             false,
@@ -339,57 +308,9 @@ public class DecoderThread extends Thread {
 		/* Parsing */
 		HyperGraph hypergraph = chart.expand();
 
-        // delete the sentence-specific grammar if it didn't
-        // already exist and we weren't asked to keep it around
-        if (! alreadyExisted && ! JoshuaConfiguration.keep_sent_specific_tm && JoshuaConfiguration.use_sent_specific_tm) {
-            File file = new File(tmFile);
-            file.delete();
+		long seconds = (System.currentTimeMillis() - startTime) / 1000;
+		logger.info("translation of sentence " + sentence.id() + " took " + seconds + " seconds [" + getId() + "]");
 
-            logger.info("Deleting sentence-level grammar file '" + tmFile + "'");
-
-        } else if (JoshuaConfiguration.keep_sent_specific_tm) {
-            logger.info("Keeping sentence-level grammar (keep_sent_specific_tm=true)");
-        } else if (alreadyExisted) {
-            logger.info("Keeping sentence-level grammar (already existed)");
-        }
-		
         return hypergraph;
-	}
-
-	
-	/**decode a sentence, and return a hypergraph*/
-	public HyperGraph getHyperGraph(String sentence)
-	{
-		Chart chart;
-		
-		int[] intSentence = this.symbolTable.getIDs(sentence);
-		Lattice<Integer> inputLattice = Lattice.createLattice(intSentence);
-		
-		Grammar[] grammars = new Grammar[grammarFactories.size()];
-		int i = 0;
-		for (GrammarFactory factory : this.grammarFactories) {
-			grammars[i] = factory.getGrammarForSentence(
-					new Pattern(this.symbolTable, intSentence));
-			
-			// For batch grammar, we do not want to sort it every time
-			if (! grammars[i].isSorted()) {
-				grammars[i].sortGrammar(this.featureFunctions);
-			}
-			
-			i++;
-		}
-		
-		chart = new Chart(
-				inputLattice,
-				this.featureFunctions,
-				this.stateComputers,
-				this.symbolTable,
-				0,
-				grammars,
-                false,
-				JoshuaConfiguration.goal_symbol,
-				null, null);
-		
-		return chart.expand();
 	}
 }
