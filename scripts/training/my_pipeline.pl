@@ -70,19 +70,26 @@ my $WITTEN_BELL = 0;
 my $METRIC = "BLEU 4 closest";
 my $METRIC_NAME;
 my $NOT_BLEU = 0;
+my $N_BEST = 300;
 
 # where processed data files are stored
 my $DATA_DIR = "data";
 
 # this file should exist in the Joshua mert templates file; it contains
 # the Joshua command invoked by MERT
-my $JOSHUA_CONFIG_ORIG   = "$MERTCONFDIR/joshua.config";
+my $JOSHUA_CONFIG_ORIG   = "$MERTCONFDIR/joshua.config.simp";
 my %MERTFILES = (
   'decoder_command' => "$MERTCONFDIR/decoder_command.qsub",
   'joshua.config'   => $JOSHUA_CONFIG_ORIG,
   'mert.config'     => "$MERTCONFDIR/mert.config",
-  'params.txt'      => "$MERTCONFDIR/params.txt",
+  'params.txt'      => "$MERTCONFDIR/params.txt.simp",
 );
+
+#if ($METRIC_NAME !~ /^bleu$/) {
+#  $MERTFILES{'joshua.config'} = "$MERTCONFDIR/joshua.config.simp";
+#  $MERTFILES{'params.txt'} = "$MERTCONFDIR/params.txt.simp";
+#  $JOSHUA_CONFIG_ORIG = $MERTFILES{'joshua.config'};
+#}
 
 my $DO_MBR = 1;
 
@@ -180,7 +187,8 @@ my $retval = GetOptions(
   "hadoop=s"          => \$HADOOP,
   "omit-cmd!"         => \$OMIT_CMD,
   "optimizer-runs=i"  => \$OPTIMIZER_RUNS,
-  "metric=s"          => \$METRIC
+  "metric=s"          => \$METRIC,
+  "n-best=i"          => \$N_BEST 
 );
 
 if (! $retval) {
@@ -353,11 +361,7 @@ if ($METRIC_NAME =~ /syn/) {
 
 }
 
-if ($METRIC_NAME !~ /^bleu$/) {
-  $MERTFILES{'joshua.config'} = "$MERTCONFDIR/joshua.config.simp";
-  $MERTFILES{'params.txt'} = "$MERTCONFDIR/params.txt.simp";
-  $JOSHUA_CONFIG_ORIG = $MERTFILES{'joshua.config'};
-}
+
 
 my $OOV = ($GRAMMAR_TYPE eq "samt") ? "OOV" : "X";
 
@@ -379,6 +383,7 @@ if (@CORPORA) {
 if ($TUNE) {
   $TUNE{source} = "$TUNE.$SOURCE";
   $TUNE{target} = "$TUNE.$TARGET";
+  $TUNE{sourceparsed} = "$TUNE.$SOURCE.parsed";
 }
 
 if ($TEST) {
@@ -849,7 +854,7 @@ if ($DO_FILTER_TM and ! defined $TUNE_GRAMMAR_FILE) {
   $TUNE_GRAMMAR = "$DATA_DIRS{tune}/grammar.filtered.gz";
 
   $cachepipe->cmd("filter-tune",
-				  "$SCRIPTDIR/training/scat $GRAMMAR_FILE | java -Xmx12g -Dfile.encoding=utf8 -cp $JOSHUA/thrax/bin/thrax.jar edu.jhu.thrax.util.TestSetFilter -v $TUNE{source} | $SCRIPTDIR/training/remove-unary-abstract.pl | gzip -9n > $TUNE_GRAMMAR",
+				  "$SCRIPTDIR/training/scat $GRAMMAR_FILE | java -Xmx12g -Dfile.encoding=utf8 -cp $ENV{THRAX}/bin/ edu.jhu.thrax.util.TestSetFilter -v $TUNE{source} | $SCRIPTDIR/training/remove-unary-abstract.pl | gzip -9n > $TUNE_GRAMMAR",
 				  $GRAMMAR_FILE,
 				  $TUNE{source},
 				  $TUNE_GRAMMAR);
@@ -858,7 +863,7 @@ if ($DO_FILTER_TM and ! defined $TUNE_GRAMMAR_FILE) {
 # create the glue grammars
 if (! defined $GLUE_GRAMMAR_FILE) {
   $cachepipe->cmd("glue-tune",
-				  "$SCRIPTDIR/training/scat $TUNE_GRAMMAR | java -Xmx2g -cp $JOSHUA/thrax/bin/thrax.jar:$JOSHUA/lib/hadoop-core-0.20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar edu.jhu.thrax.util.CreateGlueGrammar $THRAX_CONF_FILE > $DATA_DIRS{tune}/grammar.glue",
+				  "$SCRIPTDIR/training/scat $TUNE_GRAMMAR | java -Xmx2g -cp $ENV{THRAX}/bin:$JOSHUA/lib/hadoop-core-0.20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar:$ENV{THRAX}/lib/libstemmer.jar edu.jhu.thrax.util.CreateGlueGrammar $THRAX_CONF_FILE > $DATA_DIRS{tune}/grammar.glue",
 				  $TUNE_GRAMMAR,
 				  "$DATA_DIRS{tune}/grammar.glue");
   $GLUE_GRAMMAR_FILE = "$DATA_DIRS{tune}/grammar.glue";
@@ -903,7 +908,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 	open FROM, $file or die "can't find file '$file'";
 	open TO, ">$mertdir/$key" or die "can't write to file '$mertdir/$key'";
 	while (<FROM>) {
-	  s/<INPUT>/$TUNE{source}.parsed/g;
+	  s/<INPUT>/$TUNE{sourceparsed}/g;
 	  s/<SOURCE>/$SOURCE/g;
 	  s/<RUNDIR>/$RUNDIR/g;
 	  s/<TARGET>/$TARGET/g;
@@ -929,6 +934,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 	  s/<MERTDIR>/$mertdir/g;
 	  s/use_sent_specific_tm=.*/use_sent_specific_tm=0/g;
 	  s/BLEU\s4\sclosest/$METRIC$source_dir/g;
+	  s/<N>/$N_BEST/g;
 	  print TO;
 	}
 	close(FROM);
@@ -938,7 +944,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 
   # run MERT
   $cachepipe->cmd("mert-$run",
-				  "java -d64 -Xmx2g -cp $JOSHUA/bin:$JOSHUA/lib/libstemmer.jar:$JOSHUA/lib/stanford-corenlp-2011-09-16.jar joshua.zmert.ZMERT -maxMem 4500 $mertdir/mert.config > $mertdir/mert.log 2>&1",
+				  "java -d64 -Xmx12g -cp $JOSHUA/bin:$JOSHUA/lib/libstemmer.jar:$JOSHUA/lib/stanford-corenlp-2011-09-16.jar joshua.zmert.ZMERT -maxMem 4500 $mertdir/mert.config > $mertdir/mert.log 2>&1",
 				  $TUNE_GRAMMAR,
 				  "$mertdir/joshua.config.ZMERT.final",
 				  "$mertdir/decoder_command",
@@ -970,7 +976,7 @@ if ($TEST_GRAMMAR_FILE) {
 	$TEST_GRAMMAR = "$DATA_DIRS{test}/grammar.filtered.gz";
 
 	$cachepipe->cmd("filter-test",
-					"$SCRIPTDIR/training/scat $GRAMMAR_FILE | java -Xmx12g -Dfile.encoding=utf8 -cp $JOSHUA/thrax/bin/thrax.jar edu.jhu.thrax.util.TestSetFilter -v $TEST{source} | $SCRIPTDIR/training/remove-unary-abstract.pl | gzip -9n > $TEST_GRAMMAR",
+					"$SCRIPTDIR/training/scat $GRAMMAR_FILE | java -Xmx12g -Dfile.encoding=utf8 -cp $ENV{THRAX}/bin edu.jhu.thrax.util.TestSetFilter -v $TEST{source} | $SCRIPTDIR/training/remove-unary-abstract.pl | gzip -9n > $TEST_GRAMMAR",
 					$GRAMMAR_FILE,
 					$TEST{source},
 					$TEST_GRAMMAR);
@@ -980,7 +986,7 @@ if ($TEST_GRAMMAR_FILE) {
 # create the glue file
 if (! defined $GLUE_GRAMMAR_FILE) {
   $cachepipe->cmd("glue-test",
-				  "$SCRIPTDIR/training/scat $TEST_GRAMMAR | java -Xmx1g -cp $JOSHUA/thrax/bin/thrax.jar:$JOSHUA/lib/hadoop-core-0.20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar edu.jhu.thrax.util.CreateGlueGrammar $THRAX_CONF_FILE > $DATA_DIRS{test}/grammar.glue",
+				  "$SCRIPTDIR/training/scat $TEST_GRAMMAR | java -Xmx1g -cp $ENV{THRAX}bin/:$JOSHUA/lib/hadoop-core-0.20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar:$ENV{THRAX}/lib/libstemmer.jar edu.jhu.thrax.util.CreateGlueGrammar $THRAX_CONF_FILE > $DATA_DIRS{test}/grammar.glue",
 				  $TEST_GRAMMAR,
 				  "$DATA_DIRS{test}/grammar.glue");
   $GLUE_GRAMMAR_FILE = "$DATA_DIRS{test}/grammar.glue";
@@ -1034,6 +1040,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 	  s/<CONFIG>/$testrun\/joshua.config/g;
 	  s/<LOG>/$testrun\/joshua.log/g;
 	  s/BLEU\s4\sclosest/$METRIC$source_dir/g;
+	  s/<N>/$N_BEST/g;
 
 	  print TO;
 	}
@@ -1078,7 +1085,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 
   $numrefs = get_numrefs($TEST{target});
   $cachepipe->cmd("test-$METRIC_NAME-$run",
-				  "java -cp $JOSHUA/bin -Dfile.encoding=utf8 -Djava.library.path=lib -Xmx1000m -Xms1000m -Djava.util.logging.config.file=logging.properties joshua.util.JoshuaEval -cand $testrun/test.output.1best -ref $TEST{target} -rps $numrefs -m $METRIC$source_dir > $testrun/test.output.1best.$METRIC_NAME",
+				  "java -cp $JOSHUA/bin:$JOSHUA/lib/libstemmer.jar:$JOSHUA/lib/stanford-corenlp-2011-09-16.jar -Dfile.encoding=utf8 -Djava.library.path=lib -Xmx1000m -Xms1000m -Djava.util.logging.config.file=logging.properties joshua.util.JoshuaEval -cand $testrun/test.output.1best -ref $TEST{target} -rps $numrefs -m $METRIC$source_dir > $testrun/test.output.1best.$METRIC_NAME",
 				  "$testrun/test.output.1best", 
 				  "$testrun/test.output.1best.$METRIC_NAME");
 
@@ -1144,7 +1151,7 @@ if ($TEST_GRAMMAR_FILE) {
 	$TEST_GRAMMAR = "$DATA_DIRS{test}/grammar.filtered.gz";
 
 	$cachepipe->cmd("filter-test-$NAME",
-					"$SCRIPTDIR/training/scat $GRAMMAR_FILE | java -Xmx12g -Dfile.encoding=utf8 -cp $JOSHUA/thrax/bin/thrax.jar edu.jhu.thrax.util.TestSetFilter -v $TEST{source} | $SCRIPTDIR/training/remove-unary-abstract.pl | gzip -9n > $TEST_GRAMMAR",
+					"$SCRIPTDIR/training/scat $GRAMMAR_FILE | java -Xmx12g -Dfile.encoding=utf8 -cp $ENV{THRAX}/bin edu.jhu.thrax.util.TestSetFilter -v $TEST{source} | $SCRIPTDIR/training/remove-unary-abstract.pl | gzip -9n > $TEST_GRAMMAR",
 					$GRAMMAR_FILE,
 					$TEST{source},
 					$TEST_GRAMMAR);
@@ -1154,7 +1161,7 @@ if ($TEST_GRAMMAR_FILE) {
 # build the glue grammar if needed
 if (! defined $GLUE_GRAMMAR_FILE) {
   $cachepipe->cmd("glue-test-$NAME",
-				  "$SCRIPTDIR/training/scat $TEST_GRAMMAR | java -Xmx2g -cp $JOSHUA/thrax/bin/thrax.jar:$JOSHUA/lib/hadoop-core-0.20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar edu.jhu.thrax.util.CreateGlueGrammar $THRAX_CONF_FILE > $DATA_DIRS{test}/grammar.glue",
+				  "$SCRIPTDIR/training/scat $TEST_GRAMMAR | java -Xmx2g -cp $ENV{THRAX}bin/:$JOSHUA/lib/hadoop-core-0.20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar:$ENV{THRAX}/lib/libstemmer.jar edu.jhu.thrax.util.CreateGlueGrammar $THRAX_CONF_FILE > $DATA_DIRS{test}/grammar.glue",
 				  $TEST_GRAMMAR,
 				  "$DATA_DIRS{test}/grammar.glue");
   $GLUE_GRAMMAR_FILE = "$DATA_DIRS{test}/grammar.glue";

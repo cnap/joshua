@@ -40,8 +40,8 @@ public class SyntacticSimplicityMetric extends BLEU {
 	private String[] srcSentences;
 	private String sourceFilename = null;
 	HashMap<String,String> parseMap;
-	double target = 6.30404221285107;
-
+	double target = 7.02566633571197;
+	boolean useTarget = true;
 	// avg weighted score for tune.simp = 7.02566633571197
 	// avg weighted score for tune.verified.en = 6.30404221285107
 
@@ -57,6 +57,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 			1.93191587271441,
 			0.447413473942941,
 			1.23089145652181, };
+	final int NUM_FEATURES = 10;
 
 	//	flags for normalization:
 	final int HEIGHT_RATIO = -1, VP_NP_RATIO = -2, NORM_GRADE_LEVEL = -3, NORM_MEDIAN = -4, NORM_RIGHT_BRANCH = -5;
@@ -64,28 +65,35 @@ public class SyntacticSimplicityMetric extends BLEU {
 	// features (14 total):
 	final int TOKEN_LEN = 0, SYLL_LEN = 1, HEIGHT = 2, TOTAL_HEIGHT = 3,NUM_PHRASES = 4, NUM_NPS = 5, NUM_VPS = 6, NUM_PPS = 7, NUM_APS = 8, NUM_BASIC_WORDS = 9, NUM_WORDS = 10, NUM_CLAUSES = 11, MEDIAN = 12, RIGHT_BRANCH = 13;
 	private int use_penalty = 1;
+	private boolean useLinearPenalty = false;
 
 	public SyntacticSimplicityMetric() {
 		super();
 		initialize();
 	}
 
+	// target = 0 indicates use the default target
+	// target < -1 indicates use each source sentence as a target
+	// target > 0 indicates use that target
 	public SyntacticSimplicityMetric(String[] options) {
 		super(options);
-		//NOTE: removing penalty flag (penalty always used)
-		//		use_penalty = Integer.parseInt(options[1]);
-		//		if (use_penalty != 0 && use_penalty != 1) {
-		//			System.err.println("Penalty must be 0 or 1");
-		//			System.exit(1);
-		//		}
-		sourceFilename = options[3];
+		if (Double.parseDouble(options[2]) > 0) target = Double.parseDouble(options[2]);
+		else if (Double.parseDouble(options[2]) < 0) useTarget = false;
+		if (options[3].toLowerCase().startsWith("lin"))
+			useLinearPenalty = true;
+		sourceFilename = options[4];
 		try {
 		    loadSources();
 		} catch (Exception e) { System.err.println("Error loading sources from sourceFilename"); System.exit(1); }
 		initialize();
+		try {
+			initializeParser();
+		} catch (Exception e) {
+			System.err.println("Error initializing parser");
+			System.exit(1);
+		}
 	}
 
-	@Override
 	public void initialize() {
 		stems = new HashMap<String,String>();
 		stemmer = new englishStemmer();
@@ -93,7 +101,6 @@ public class SyntacticSimplicityMetric extends BLEU {
 		try {
 		    loadBasicWords();
 			loadWordFrequencies();
-			initializeParser();
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -146,6 +153,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 			String[] fields;
 			while ( (line=br.readLine()) != null ) {
 				fields = line.split("\\t");
+				if (fields.length != 2) { continue; }
 				//				fields[0] = normalizeSpacing(fields[0]);
 				parseMap.put(fields[0],fields[1]);
 			}
@@ -159,7 +167,10 @@ public class SyntacticSimplicityMetric extends BLEU {
 	// get the parse of a sentence and parse/print if not pre-parsed
 	public Tree parse(String s) {
 		if (parseMap.containsKey(s)) {
-			return Tree.valueOf(parseMap.get(s));
+			Tree t = Tree.valueOf(parseMap.get(s));
+			// check to see if this is an incomplete parse
+			if (t != null)
+				return t;
 		}
 		s = s.replaceAll("\\s+", " ");
 		s = s.trim();
@@ -171,11 +182,11 @@ public class SyntacticSimplicityMetric extends BLEU {
 			parseWriter.write(s+"\t"+parseString+"\n");
 		} catch (IOException e) {
 			System.err.println("Error writing parse to "+pathToParses);
+			e.printStackTrace();
 		}
 		parseMap.put(s,parseString);
 		return t;
 	}
-
 
 	private void loadBasicWords() throws IOException {
 		BASIC_WORDS = new HashSet<String>();
@@ -221,7 +232,6 @@ public class SyntacticSimplicityMetric extends BLEU {
 	}
 
 	//TODO determine new max/min scores
-	@Override
 	public double bestPossibleScore() {
 		double d = 0;
 		for (int i = 0; i < weight.length; i++)
@@ -230,7 +240,6 @@ public class SyntacticSimplicityMetric extends BLEU {
 	}
 
 	//TODO determine new max/min scores
-	@Override
 	public double worstPossibleScore() {
 		return 0;
 	}
@@ -260,17 +269,16 @@ public class SyntacticSimplicityMetric extends BLEU {
 		return norm;
 	}
 
-	@Override
 	public int[] suffStats(String cand_str, int i) {
 		int[] stats = new int[suffStatsCount];
 		super.suffStats(cand_str, i);
-		try {
-			if (i == numSentences - 1) {
-				parseWriter.close();
-			}
-		} catch(Exception e) {
-			System.err.println("Error closing the file writer for "+ pathToParses);
-		}
+//		try {
+//			if (i == numSentences - 1) {
+//				parseWriter.close();
+//			}
+//		} catch(Exception e) {
+//			System.err.println("Error closing the file writer for "+ pathToParses);
+//		}
 
 		int[] temp_stats = 	calculateStatistics(cand_str);
 		for (int j = 0; j < FEATURE_COUNT; j++) {
@@ -393,67 +401,84 @@ public class SyntacticSimplicityMetric extends BLEU {
 		return scores;
 	}
 
+	public double getRelativeScore(int[] stats) {
+		double[] scores = getScores(stats, 0);
+		double[] sourceScores = getScores(stats, 1);
+		double score = 0;
+		for (int i = 0; i < NUM_FEATURES; i++) {
+			if (scores[i] > sourceScores[i])
+				score += weights[i];
+		}
+		return score;
+	}
 
 	public double getWeightedScore(double[] scores) {
 		double weightedScore = 0;
-		for (int i = 0; i < 10; i++) {
+		for (int i = 0; i < NUM_FEATURES; i++) {
 			weightedScore+=scores[i] * weight[i];
 		}
 		return weightedScore;
 	}
 
-	//TODO add BLEU combination and penalty
-	@Override
 	public double score(int[] stats) {
 		double [] scores = getScores(stats,0);
 		double [] sourceScores = getScores(stats,1);
 		double candScore = getWeightedScore(scores);
 		double sourceScore = getWeightedScore(sourceScores);
+
 		double penalty = 1.0;
-		if (use_penalty == 1) {
-			if (sourceScore > candScore) {
-				penalty = Math.exp(candScore - sourceScore);
-			}
-			if (target > candScore) penalty = 0;
+		if (useTarget) {
+			penalty = getSimplicityPenalty(candScore,target);
 		}
+		else penalty = getSimplicityPenalty(candScore,sourceScore);
 		double BLEUscore = super.score(stats);
-		return (candScore * 8 - BLEUscore*10) * penalty;
+//		if (use_penalty == 1) {
+//			if (sourceScore > candScore) {
+//				penalty = Math.exp(candScore - sourceScore);
+//			}
+//			if (target > candScore) penalty = 0;
+//		}
+		if (useLinearPenalty)
+			return (candScore * 8 - BLEUscore * 10) * penalty;
+		return BLEUscore*penalty;
 		//		return candScore * penalty;
 	}
 
-	@Override
+	private double getSimplicityPenalty(double this_score, double target_score) {
+		if (this_score > target_score) return 1.0;
+		return 0.0;
+		//if this is too severe, try return Math.exp(this_score - target_score)
+	}
+
 	public void printDetailedScore_fromStats(int[] stats, boolean oneLiner) {
 		double candScore = getWeightedScore(getScores(stats,0));
 		double srcScore = getWeightedScore(getScores(stats,1));
 		double BLEUscore = super.score(stats);
+		double penalty = 1.0;
+		if (useTarget) penalty = getSimplicityPenalty(candScore,target);
+		else penalty = getSimplicityPenalty(candScore,srcScore);
+
 		if (!oneLiner) {
 			double[] scores = getScores(stats,0);
-			System.out.println("FINAL SCORE = "+score(stats));
-			System.out.println("CAND W_SCORE = "+getWeightedScore(getScores(stats,0)));
+			System.out.println("FINAL_SCORE= "+score(stats));
+			System.out.println("CAND_W_SCORE= "+candScore);
 			System.out.println();
-			System.out.println("   HEIGHT RATIO       = "+scores[0]);
-			System.out.println("   PHRASE/TOKEN RATIO = "+scores[1]);
-			System.out.println("   VP/NP RATIO        = "+scores[2]);
-			System.out.println("   PP/NP RATIO        = "+scores[9]);
-			System.out.println("   AP/NP RATIO        = "+scores[8]);
-			System.out.println("   RIGHT BRANCH       = "+(4.0/scores[3]));
-			System.out.println("   GRADE LEVEL        = "+scores[7]);
-			System.out.println("   MEDIAN FREQUENCY   = "+stats[MEDIAN]);
-			System.out.println("   AVG SYLLABLE/TOKEN = "+ (1.0/stats[6]));
-			System.out.println("   % BASIC WORDS      = "+stats[4]);
-			System.out.println("SOURCE W_SCORE = "+srcScore);
-			System.out.println("BLEU = "+BLEUscore);
+			System.out.println("   HEIGHT_RATIO= "+scores[0]);
+			System.out.println("   PHRASE/TOKEN_RATIO= " + scores[1]);
+			System.out.println("   VP/NP_RATIO= "+scores[2]);
+			System.out.println("   PP/NP_RATIO= "+scores[9]);
+			System.out.println("   AP/NP_RATIO= "+scores[8]);
+			System.out.println("   RIGHT_BRANCH= "+(4.0/scores[3]));
+			System.out.println("   GRADE_LEVEL= "+scores[7]);
+			System.out.println("   MEDIAN_FREQUENCY= "+stats[MEDIAN]);
+			System.out.println("   AVG_SYLLABLE/TOKEN= "+ (1.0/stats[6]));
+			System.out.println("   %_BASIC_WORDS= "+stats[4]);
+			System.out.println("SOURCE_W_SCORE = "+srcScore);
+			System.out.println("BLEU_= "+BLEUscore);
+			System.out.println("penalty_= "+penalty);
 		}
 		else {
-			double penalty = 1.0;
-			if (use_penalty == 1) {
-				if (srcScore > candScore) {
-					penalty = Math.exp(candScore - srcScore);
-				}
-
-			}
-			System.out.println("WEIGHTED SCORE = "+score(stats)+"\tSRC = "+srcScore+"\tPENALTY = "+penalty);
-
+			System.out.println("FINAL_SCORE= "+score(stats)+"\tCAND= "+candScore+"\tSRC= "+srcScore+"\tPENALTY= "+penalty+"\tBLEU= "+BLEUscore);
 		}
 	}
 
@@ -464,6 +489,8 @@ public class SyntacticSimplicityMetric extends BLEU {
 	}
 
 	public int countSyllables(String s) {
+		if (s.equals("-"))
+			return 1;
 		if (s.contains("-")) { // if the word is hyphenated, split at the hyphen before counting syllables
 			int count = 0;
 			String[] temp = s.split("-");

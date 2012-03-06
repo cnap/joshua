@@ -74,7 +74,7 @@ pop-limit = 100
 
 # How many hypotheses to output
 
-top-n = 300
+top-n = <N>
 
 # Whether those hypotheses should be distinct strings
 
@@ -135,36 +135,58 @@ phrasemodel pt 24 1.0
 phrasemodel pt 25 1.0
 phrasemodel pt 26 1.0
 phrasemodel pt 27 1.0
+phrasemodel pt 28 1.0
+phrasemodel pt 29 1.0
+phrasemodel pt 30 1.0
+phrasemodel pt 31 1.0
+phrasemodel pt 32 1.0
+phrasemodel pt 33 1.0
+phrasemodel pt 34 1.0
+phrasemodel pt 35 1.0
+phrasemodel pt 36 1.0
+phrasemodel pt 37 1.0
+phrasemodel pt 38 1.0
 
 ### FEATURE INDEX ###
-#0	Abstract
-#1	Adjacent
-#2	BasicWordDiff
-#3	ContainsX
-#4	GlueRule
-#5	GradeLvlDiff
-#6	Identity
-#7	Lexical
-#8	MednFreqDiff
-#9	Monotonic
-#10	PhrasePenalty
-#11	SourceTerminalsButNoTarget
-#12	SourceWords
-#13	SrcBasicWords
-#14	SrcGradeLvl
-#15	SrcMednFreq
-#16	SrcSylls
-#17	SyllDiff
-#18	TargetTerminalsButNoSource
-#19	TargetWords
-#20	TgtBasicWords
-#21	TgtGradeLvl
-#22	TgtMednFreq
-#23	TgtSylls
-#24	UnalignedSource
-#25	UnalignedTarget
-#26	WordCountDiff
-#27	WordLenDiff
+#0       Abstract
+#1       Adjacent
+#2       BasicWordDiff
+#3       ContainsX
+#4       GlueRule
+#5       GradeLvlDiff
+#6       Identity
+#7       Lex(e|f)
+#8       Lex(f|e)
+#9       Lexical
+#10      MednFreqDiff
+#11      Monotonic
+#12      PhrasePenalty
+#13      RarityPenalty
+#14      SourceTerminalsButNoTarget
+#15      SourceWords
+#16      SrcBasicWords
+#17      SrcGradeLvl
+#18      SrcMednFreq
+#19      SrcSylls
+#20      SyllDiff
+#21      TargetTerminalsButNoSource
+#22      TargetWords
+#23      TgtBasicWords
+#24      TgtGradeLvl
+#25      TgtMednFreq
+#26      TgtSylls
+#27      UnalignedSource
+#28      UnalignedTarget
+#29      WordCountDiff
+#30      WordLenDiff
+#31      p(LHS|e)
+#32      p(LHS|f)
+#33      p(e|LHS)
+#34      p(e|f)
+#35      p(e|f,LHS)
+#36      p(f|LHS)
+#37      p(f|e)
+#38      p(f|e,LHS)
 
 # The wordpenalty feature counts the number of words in each hypothesis.
 

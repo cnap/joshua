@@ -1,4 +1,1 @@
-#!/bin/bash
-
-cat <INPUT> | $HOME/tools/joshua_juri/joshua-decoder -m <MEM> -threads <NUMTHREADS> -c <CONFIG> | tee <OUTPUT> | perl $JOSHUA/scripts/training/extract_nbest_candidates.pl | sort  | comm -13 <(cut -f 1 parsed_nbest_list | sort) - | tee parsed_nbest_list.temp | java -Xmx8g -jar $JOSHUA/lib/BerkeleyParser.jar -gr $JOSHUA/lib/eng_sm6.gr -nThreads <NUMTHREADS> | paste parsed_nbest_list.temp - >> parsed_nbest_list 2> <LOG>
-
+cat <INPUT> | $HOME/tools/joshua_juri/joshua-decoder -m <MEM> -threads <NUMTHREADS> -c <CONFIG> > <OUTPUT> 2> <LOG>

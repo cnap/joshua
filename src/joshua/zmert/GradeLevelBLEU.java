@@ -18,21 +18,30 @@ public class GradeLevelBLEU extends BLEU {
 	//	private Pattern wordPattern = Pattern.compile("[a-zA-Z]+");
 	private int SOURCE = 0, CANDIDATE = 1, REFERENCE = 2;
 	private boolean usePenalty = true;
-//	double targetScore = 6.419; // tune.en avg GL = 6.419, tune.simp avg GL = 5.005
-	double targetScore = 5.005; // tune.en avg GL = 6.419, tune.simp avg GL = 5.005
+	// double targetScore = 6.419; // tune.en avg GL = 6.419, tune.simp avg GL =
+	// 5.005
+	double targetGL = 5.005; // tune.en avg GL = 6.419, tune.simp avg GL = 5.005
 	private boolean useTarget = true;
+	private boolean useLinearPenalty = false;
 
 
 	public GradeLevelBLEU() {
 		super();
 		initialize();
 	}
+
+	// target = 0 indicates use the default target
+	// target < -1 indicates use each source sentence as a target
+	// target > 0 indicates use that target
 	public GradeLevelBLEU(String[] options) {
-		// there are 3 arguments: the two for BLEU and one for the source sentences
+		// there are 4 arguments: the two for BLEU and one for the source sentences
 		super(options);
-		if (Integer.parseInt(options[2]) > 0) targetScore = Integer.parseInt(options[2]);
+		if (Double.parseDouble(options[2]) > 0) targetGL = Double.parseDouble(options[2]);
+		else if (Double.parseDouble(options[2]) < 0 ) useTarget = false;
+		if (options[3].toLowerCase().startsWith("lin"))
+			useLinearPenalty = true;
 		try {
-			loadSources(options[3]);
+			loadSources(options[4]);
 		} catch (IOException e) {
 			logger.severe("Error loading the source sentences from "+options[2]);
 			System.exit(1);
@@ -41,7 +50,6 @@ public class GradeLevelBLEU extends BLEU {
 		initialize();
 	}
 
-	@Override
 	public void initialize() {
 		metricName = "GL_BLEU";
 		toBeMinimized = false;
@@ -61,12 +69,9 @@ public class GradeLevelBLEU extends BLEU {
 		}
 	}
 
-	@Override
 	public double bestPossibleScore() { return 50; }
-	@Override
 	public double worstPossibleScore() { return 0; }
 
-	@Override
 	public int[] suffStats(String cand_str, int i) {
 		int[] stats = new int[suffStatsCount];
 
@@ -119,6 +124,8 @@ public class GradeLevelBLEU extends BLEU {
 
 	// add a syllable for punctuation, etc., so it isn't free
 	public int countSyllables(String s) {
+		if (s.equals("-"))
+			return 1;
 		if (s.contains("-")) { // if the word is hyphenated, split at the hyphen before counting syllables
 			int count = 0;
 			String[] temp = s.split("-");
@@ -135,35 +142,83 @@ public class GradeLevelBLEU extends BLEU {
 		return count;
 	}
 
-	@Override
+
+	public double calculateBLEUscore(int[] stats) {
+		double accuracy = 0.0;
+		double smooth_addition = 1.0; // following bleu-1.04.pl
+
+		// this part matches BLEU
+		double correctGramCount, totalGramCount;
+		for (int n = 1; n <= maxGramLength; ++n) {
+			correctGramCount = stats[2 * (n - 1)];
+			totalGramCount = stats[2 * (n - 1) + 1];
+
+			double prec_n;
+			if (totalGramCount > 0) {
+				prec_n = correctGramCount / totalGramCount;
+			} else {
+				prec_n = 1; // following bleu-1.04.pl ???????
+			}
+
+			if (prec_n == 0) {
+				smooth_addition *= 0.5;
+				prec_n = smooth_addition / (stats[tokenLength(CANDIDATE)] - n + 1);
+			}
+			accuracy += weights[n] * Math.log(prec_n);
+		}
+		double brevity_penalty = 1.0;
+		double c_len = stats[tokenLength(CANDIDATE)];
+		double r_len = stats[tokenLength(REFERENCE)];
+
+		if (c_len < r_len)
+			brevity_penalty = Math.exp(1 - (r_len / c_len));
+
+		return brevity_penalty * Math.exp(accuracy);
+	}
+
 	public double score(int[] stats) {
 		if (stats.length != suffStatsCount) {
 			logger.severe("Mismatch between stats.length and suffStatsCount (" + stats.length + " vs. " + suffStatsCount + ") in BLEU.score(int[])");
 			System.exit(2);
 		}
-		double BLEUscore = super.score(stats);
-		double candScore = gradeLevel(stats[tokenLength(CANDIDATE)],stats[syllableLength(CANDIDATE)]);
-		double srcScore = gradeLevel(stats[tokenLength(SOURCE)],stats[syllableLength(SOURCE)]);
+		double BLEUscore = calculateBLEUscore(stats);
+		double candGL = gradeLevel(stats[tokenLength(CANDIDATE)],stats[syllableLength(CANDIDATE)]);
+		double srcGL = gradeLevel(stats[tokenLength(SOURCE)],stats[syllableLength(SOURCE)]);
+
 		double readabilityPenalty = 1;
-		if (usePenalty && candScore > srcScore) readabilityPenalty = Math.exp(srcScore-candScore);
-		if (useTarget && candScore >= targetScore) readabilityPenalty = 0;
+		if (useTarget) {
+			readabilityPenalty = getReadabilityPenalty(candGL,targetGL);
+		}
+		else readabilityPenalty = getReadabilityPenalty(candGL,srcGL);
+
+		// if (usePenalty && candScore > srcScore) readabilityPenalty =
+		// Math.exp(srcScore-candScore);
+		// if (useTarget && candScore >= targetScore) readabilityPenalty = 0;
 		//			readabilityPenalty  = candScore / srcScore;
 
 		// to add a "readability penalty", set readabilityPenalty = < 1 if the candidate has a higher grade level than the source
 
-		//		double brevity_penalty = 1.0;
-		//		double c_len = stats[tokenLength(CANDIDATE)];
-		//		double r_len = stats[tokenLength(REFERENCE)];
-		//		if (c_len < r_len)
-		//			brevity_penalty = Math.exp(1 - (r_len / c_len));
+		if (useLinearPenalty) {
+			// TODO: changed lambda to 100, may want to change back to 50
+			double combinedScore = (100 * BLEUscore - candGL)
+					* readabilityPenalty;
+			if (combinedScore < worstPossibleScore())
+				combinedScore = worstPossibleScore();
+			if (combinedScore > bestPossibleScore())
+				combinedScore = bestPossibleScore();
+			return combinedScore;
+		}
+		return readabilityPenalty * BLEUscore;
+	}
 
-		//TODO: changed lambda to 100, may want to change back to 50
-		double combinedScore = (100*BLEUscore - candScore) * readabilityPenalty;
-		if (combinedScore < worstPossibleScore()) combinedScore = worstPossibleScore();
-		if (combinedScore > bestPossibleScore()) combinedScore = bestPossibleScore();
+	private double getReadabilityPenalty(double this_gl, double target_gl) {
+		if (this_gl < target_gl) {
+			return 1.0;
+		}
+		return 0.0;
+		// if 0 is too severe, try :
+		//return Math.exp(target_gl - this_gl);
 
-		return combinedScore;
-		//		return grade_level_ratio / brevity_penalty;
 	}
 
 	public double gradeLevel(int numWords, int numSyllables) {
@@ -173,7 +228,6 @@ public class GradeLevelBLEU extends BLEU {
 		return d;
 	}
 
-	@Override
 	public void printDetailedScore_fromStats(int[] stats, boolean oneLiner) {
 		DecimalFormat df = new DecimalFormat("#.###");
 		System.out.print("GL_BLEU = " + df.format(score(stats)));
@@ -182,12 +236,12 @@ public class GradeLevelBLEU extends BLEU {
 		double cand_gl = gradeLevel(stats[tokenLength(CANDIDATE)],stats[syllableLength(CANDIDATE)]);
 		double penalty = 1;
 		if (usePenalty && cand_gl > source_gl) penalty = Math.exp(source_gl - cand_gl);
-		if (useTarget && cand_gl >= targetScore) penalty = 0;
+		if (useTarget && cand_gl >= targetGL) penalty = 0;
 
 		System.out.print("\tREF_GL = "+df.format(gradeLevel(stats[tokenLength(REFERENCE)],stats[syllableLength(REFERENCE)])));
 		System.out.print("\tCAND_GL = "+df.format(cand_gl));
 		System.out.print("\tSRC_GL = "+df.format(source_gl));
-		System.out.print("\tBLEU = "+df.format(super.score(stats)));
+		System.out.print("\tBLEU = "+df.format(calculateBLEUscore(stats)));
 		System.out.print("\tPenalty = "+df.format(penalty));
 		System.out.println();
 	}

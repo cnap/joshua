@@ -27,6 +27,17 @@ phrasemodel pt 24 |||     0.589793 Opt     -Inf    +Inf    -1      +1
 phrasemodel pt 25 |||     0.589793 Opt     -Inf    +Inf    -1      +1
 phrasemodel pt 26 |||     0.589793 Opt     -Inf    +Inf    -1      +1
 phrasemodel pt 27 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 28 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 29 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 30 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 31 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 32 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 33 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 34 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 35 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 36 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 37 |||     0.589793 Opt     -Inf    +Inf    -1      +1
+phrasemodel pt 38 |||     0.589793 Opt     -Inf    +Inf    -1      +1
 wordpenalty       |||     -2.844814 Opt    -Inf    +Inf    -5      0
 oovpenalty        |||     -100     Fix     0       0       0       0
 normalization = none
