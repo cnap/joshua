@@ -70,14 +70,10 @@ public abstract class EvaluationMetric
 		// the "WER" metric expects an options array of length 0
 		metricOptionCount.put("MRC_BLEU",4);
 		metricOptionCount.put("COMP_BLEU",5);
-		metricOptionCount.put("GRADE_LEVEL",2); // this expects a path to the source sentences and a binary flag for penalty (0=no penalty)
-		metricOptionCount.put("GL_BLEU", 5); // this expects the BLEU options,a
-												// target GL rate (if target ==
-												// -1 will use default target),
-												// and "lin" for a linear score
-												// (rather than 0/1 penalty) and
-												// a path to the source
-												// sentences
+		metricOptionCount.put("GL_BLEU", 3);
+		// this expects the target GL (default 9.87 if input <= 0),
+		// the alpha score (default 0.9 if input <= 0
+		// and a path to the source sentences
 		metricOptionCount.put("SYN_SIMP", 5); // this expects the BLEU options,a
 												// target SS score (if target ==
 												// -1 will use default target),

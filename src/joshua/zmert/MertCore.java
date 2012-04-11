@@ -1766,12 +1766,10 @@ i ||| words of candidate translation . ||| feat-1_val feat-2_val ... feat-numPar
 		docOfSentence = new int[numSentences];
 
 		if (averageMetrics.contains(metricName)) {
-			System.out.println(metricName+" in averageMetrics");
 			for (int i = 0; i < numSentences; ++i) docOfSentence[i] = i;
 			numDocuments = numSentences;
 			return;
 		}
-		else { System.out.println(metricName+" NOT in averageMetrics"); }
 
 		if (docInfoFileName == null) {
 			for (int i = 0; i < numSentences; ++i) docOfSentence[i] = 0;

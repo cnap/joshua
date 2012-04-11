@@ -944,7 +944,7 @@ for my $run (1..$OPTIMIZER_RUNS) {
 
   # run MERT
   $cachepipe->cmd("mert-$run",
-				  "java -d64 -Xmx12g -cp $JOSHUA/bin:$JOSHUA/lib/libstemmer.jar:$JOSHUA/lib/stanford-corenlp-2011-09-16.jar joshua.zmert.ZMERT -maxMem 4500 $mertdir/mert.config > $mertdir/mert.log 2>&1",
+				  "java -d64 -Xmx12g -cp $JOSHUA/bin:$JOSHUA/lib/libstemmer.jar:$JOSHUA/lib/stanford-corenlp-2011-09-16.jar joshua.zmert.ZMERT -maxMem 10000 $mertdir/mert.config > $mertdir/mert.log 2>&1",
 				  $TUNE_GRAMMAR,
 				  "$mertdir/joshua.config.ZMERT.final",
 				  "$mertdir/decoder_command",

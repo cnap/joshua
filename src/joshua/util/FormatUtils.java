@@ -29,6 +29,8 @@ import java.util.regex.Pattern;
 public class FormatUtils {
 
 	public static boolean isNonterminal(String token) {
+		if (token.length() == 0)
+			return false;
 		return (token.charAt(0) == '[')
 				&& (token.charAt(token.length() - 1) == ']');
 	}

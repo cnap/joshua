@@ -32,6 +32,8 @@ import java.text.DecimalFormat;
 import java.util.TreeSet;
 
 import joshua.zmert.EvaluationMetric;
+import joshua.zmert.GradeLevelBLEU;
+import joshua.zmert.SyntacticSimplicityMetric;
 
 public class JoshuaEval {
 	final static DecimalFormat f4 = new DecimalFormat("###0.0000");
@@ -213,7 +215,7 @@ public class JoshuaEval {
 
 		int suffStatsCount = evalMetric.get_suffStatsCount();
 
-		if (metricName.equals("GL_BLEU") || metricName.equals("GRADE_LEVEL") || metricName.equals("SYN_READ")) {
+		if (metricName.equals("GL_BLEU") || metricName.equals("SYN_SIMP")) {
 			double sum_score = 0;
 			for (int i = 0; i < numSentences; ++i) {
 				int[] stats = new int[suffStatsCount];
@@ -239,6 +241,13 @@ public class JoshuaEval {
 		if (verbose) {
 			println("");
 			println("Printing detailed scores for individual sentences...");
+			if (metricName.equals("GL_BLEU")) {
+				println(GradeLevelBLEU.getOutputHeader());
+			}
+			if (metricName.equals("SYN_SIMP")) {
+				println(SyntacticSimplicityMetric.getOutputHeader());
+			}
+
 			for (int i = 0; i < numSentences; ++i) {
 				print("Sentence #" + i + ": ");
 				int[] stats = new int[suffStatsCount];

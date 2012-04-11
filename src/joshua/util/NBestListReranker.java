@@ -85,9 +85,8 @@ String usage = "java joshua.util.NBestListReranker referencefilepath nbestlistpa
 			}
 			double d = evalMetric.score(stats);
 			if (d > 0) {
-				if (validCandidates.containsKey(i))
-					System.err.println("Found duplicate for sentence " + sentIndex + " val = " + d);
 				validCandidates.put(i, d);
+				System.out.println(sentIndex + " ||| " + topCand_str[i] + " ||| " + featureScores.get(i) + " ||| " + d);
 			}
 		}
 		// if no valid candidates are found, just add them all
@@ -99,7 +98,7 @@ String usage = "java joshua.util.NBestListReranker referencefilepath nbestlistpa
 		}
 
 		for (Map.Entry<Integer, Double> e : sortByValue(validCandidates).entrySet()) {
-			System.out.println(sentIndex + " ||| " + topCand_str[e.getKey()] + " ||| " + featureScores.get(e.getKey()) + " ||| " + e.getValue());
+		    //			System.out.println(sentIndex + " ||| " + topCand_str[e.getKey()] + " ||| " + featureScores.get(e.getKey()) + " ||| " + e.getValue());
 
 		}
 		// for (Double d : validCandidates.descendingKeySet()) {

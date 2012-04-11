@@ -10,8 +10,9 @@ import java.util.regex.Pattern;
 public class GradeLevelMetric extends EvaluationMetric {
 
 	protected String[] srcSentences;
-	private Pattern syllable = Pattern.compile("(^[aeiouy]*[aeiouy]+)"); // matches C*V+
-	private Pattern silentE = Pattern.compile("^[aeiou]e$");
+	private Pattern syllable = Pattern.compile("([^aeiouy]*[aeiouy]+)"); // matches
+																			// C*V+
+	private Pattern silentE = Pattern.compile("[^aeiou]e$");
 	protected final int CAND_TOKEN_LEN=0;
 	protected final int CAND_SYLL_LEN=1;
 	private final int REF_TOKEN_LEN=2;
@@ -108,7 +109,8 @@ public class GradeLevelMetric extends EvaluationMetric {
 
 		int count = 0;
 		Matcher m = syllable.matcher(s);
-		count = m.groupCount();
+		while (m.find())
+			count++;
 		m = silentE.matcher(s);
 		if (m.find()) count--;
 		if (count <= 0) count = 1;

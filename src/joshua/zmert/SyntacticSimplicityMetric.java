@@ -27,8 +27,9 @@ public class SyntacticSimplicityMetric extends BLEU {
 	private static HashSet<String> BASIC_WORDS;
 	private static SnowballStemmer stemmer;
 	private static HashMap<String,Integer> wordFrequencies;
-	private Pattern syllable = Pattern.compile("(^[aeiouy]*[aeiouy]+)"); // matches C*V+
-	private Pattern silentE = Pattern.compile("^[aeiou]e$");
+	private Pattern syllable = Pattern.compile("([^aeiouy]*[aeiouy]+)"); // matches
+																			// C*V+
+	private Pattern silentE = Pattern.compile("[^aeiou]e$");
 	List<Integer> frequencies;
 	private final int LOWEST_FREQUENCY = 75000;
 	String pathToParses;
@@ -44,7 +45,8 @@ public class SyntacticSimplicityMetric extends BLEU {
 	boolean useTarget = true;
 	// avg weighted score for tune.simp = 7.02566633571197
 	// avg weighted score for tune.verified.en = 6.30404221285107
-
+	public HashMap<String, Double> parseScores;
+	
 	// max ~11.18
 	final double[] weight = {
 			3.69502835452864,
@@ -122,7 +124,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 		suffStatsCount = 2*maxGramLength + FEATURE_COUNT * 2 + 2;
 	}
 
-	private void loadSources() throws IOException {
+	public void loadSources() throws IOException {
 		BufferedReader br = new BufferedReader(new FileReader(sourceFilename));
 		String line;
 		srcSentences= new String[numSentences];
@@ -131,6 +133,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 			srcSentences[i] = line.trim();
 			i++;
 		}
+		System.err.println("Loaded " + srcSentences.length + " sources");
 	}
 
 	private void initializeParser() throws Exception {
@@ -147,15 +150,19 @@ public class SyntacticSimplicityMetric extends BLEU {
 		pathToParses = System.getProperty("user.dir")+"/parsed_nbest_list";
 		File f = new File(pathToParses);
 		parseMap = new HashMap<String,String>();
+		parseScores = new HashMap<String, Double>();
 		if (!f.createNewFile()) {
 			BufferedReader br = new BufferedReader(new FileReader(pathToParses));
 			String line;
 			String[] fields;
 			while ( (line=br.readLine()) != null ) {
 				fields = line.split("\\t");
-				if (fields.length != 2) { continue; }
+				if (fields.length != 3) {
+					continue;
+				}
 				//				fields[0] = normalizeSpacing(fields[0]);
 				parseMap.put(fields[0],fields[1]);
+				parseScores.put(fields[0], Double.parseDouble(fields[2]));
 			}
 		}
 		System.err.println("Loaded "+parseMap.size()+" existing parses from "+pathToParses);
@@ -179,12 +186,14 @@ public class SyntacticSimplicityMetric extends BLEU {
 		constituentTreePrinter.printTree(t, new PrintWriter(treeStrWriter, true));
 		String parseString = treeStrWriter.toString().trim();
 		try {
-			parseWriter.write(s+"\t"+parseString+"\n");
+			parseWriter.write(s + "\t" + parseString + "\t" + t.score() + "\n");
 		} catch (IOException e) {
 			System.err.println("Error writing parse to "+pathToParses);
 			e.printStackTrace();
 		}
 		parseMap.put(s,parseString);
+		parseScores.put(s, t.score());
+
 		return t;
 	}
 
@@ -407,7 +416,7 @@ public class SyntacticSimplicityMetric extends BLEU {
 		double score = 0;
 		for (int i = 0; i < NUM_FEATURES; i++) {
 			if (scores[i] > sourceScores[i])
-				score += weights[i];
+				score += weight[i];
 		}
 		return score;
 	}
@@ -457,9 +466,9 @@ public class SyntacticSimplicityMetric extends BLEU {
 		double penalty = 1.0;
 		if (useTarget) penalty = getSimplicityPenalty(candScore,target);
 		else penalty = getSimplicityPenalty(candScore,srcScore);
+		double[] scores = getScores(stats, 0);
 
 		if (!oneLiner) {
-			double[] scores = getScores(stats,0);
 			System.out.println("FINAL_SCORE= "+score(stats));
 			System.out.println("CAND_W_SCORE= "+candScore);
 			System.out.println();
@@ -478,7 +487,24 @@ public class SyntacticSimplicityMetric extends BLEU {
 			System.out.println("penalty_= "+penalty);
 		}
 		else {
-			System.out.println("FINAL_SCORE= "+score(stats)+"\tCAND= "+candScore+"\tSRC= "+srcScore+"\tPENALTY= "+penalty+"\tBLEU= "+BLEUscore);
+			// return
+			// "SSB\tCAND_SS\tSRC_SS\tBLEU\tPenalty\tHEIGHT_RATIO\tPhrase/token\tVP/NP\tPP/NP\tAP/NP\tright_branch\tGL\tmed_freq\tsyll/tok\t%basic";
+
+			System.out.print(score(stats));
+			System.out.print("\t" + candScore);
+			System.out.print("\t" + srcScore);
+			System.out.print("\t" + BLEUscore);
+			System.out.print("\t" + penalty);
+			System.out.print("\t" + scores[0]);
+			System.out.print("\t" + scores[1]);
+			System.out.print("\t" + scores[2]);
+			System.out.print("\t" + scores[9]);
+			System.out.print("\t" + scores[8]);
+			System.out.print("\t" + (4.0 / scores[3]));
+			System.out.print("\t" + scores[7]);
+			System.out.print("\t" + stats[MEDIAN]);
+			System.out.print("\t" + (1.0 / stats[6]));
+			System.out.println("\t" + stats[4]);
 		}
 	}
 
@@ -500,7 +526,8 @@ public class SyntacticSimplicityMetric extends BLEU {
 
 		int count = 0;
 		Matcher m = syllable.matcher(s);
-		count = m.groupCount();
+		while (m.find())
+			count++;
 		m = silentE.matcher(s);
 		if (m.find()) count--;
 		if (count <= 0) count = 1;
@@ -509,6 +536,10 @@ public class SyntacticSimplicityMetric extends BLEU {
 
 	public static double gradeLevel(int numWords, int numSyllables) {
 		return 0.39 * numWords + 11.8 * numSyllables/numWords - 15.19;
+	}
+
+	public static String getOutputHeader() {
+		return "SENT#\tSSB\tCAND_SS\tSRC_SS\tBLEU\tPenalty\tHEIGHT_RATIO\tPhrase/token\tVP/NP\tPP/NP\tAP/NP\tright_branch\tGL\tmed_freq\tsyll/tok\t%basic";
 	}
 
 }
