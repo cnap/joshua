@@ -8,8 +8,7 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
-public class GradeLevelBLEU extends BLEU {
+public class GradeLevelBLEU extends EvaluationMetric {
   private static final Logger logger = Logger.getLogger(GradeLevelBLEU.class.getName());
 
   // syllable pattern matches /C*V+/
@@ -18,11 +17,13 @@ public class GradeLevelBLEU extends BLEU {
   private static final int SOURCE = 0, CANDIDATE = 1, REFERENCE = 2;
   private int srcIndex = 1, sentCountIndex;
   private SourceBLEU srcBLEU;
-  private double targetGL = 9.87; // tune.simp avg GL = 9.8704 (tune.en =
-  // 14.0785
+  private BLEU refBLEU;
+  // tune.simp avg GL = 9.8704 (tune.en = 14.0785)
+  private double targetGL = 9.87;
   private double alpha = 0.9;
   private boolean useTarget = true;
   private boolean useBLEUplus = true;
+  private int maxGramLength = 4;
 
   public GradeLevelBLEU() {
     super();
@@ -45,7 +46,8 @@ public class GradeLevelBLEU extends BLEU {
       logger.severe("Error loading the source sentences from " + options[2]);
       System.exit(1);
     }
-    if (useBLEUplus) srcBLEU = new SourceBLEU(4, "closest", srcIndex, true);
+    refBLEU = new BLEU(maxGramLength, "closest");
+    if (useBLEUplus) srcBLEU = new SourceBLEU(maxGramLength, "closest", srcIndex, true);
     initialize();
   }
 
@@ -64,47 +66,46 @@ public class GradeLevelBLEU extends BLEU {
       i++;
     }
     br.close();
+    refSentences = newRefSentences;
   }
 
   public void initialize() {
     metricName = "GL_BLEU";
-    effLengthMethod = EffectiveLengthMethod.SHORTEST;
     toBeMinimized = false;
     suffStatsCount = 4 * maxGramLength + 7;
     sentCountIndex = 4 * maxGramLength;
-    set_weightsArray();
-    set_maxNgramCounts();
   }
 
   public int[] suffStats(String cand_str, int i) {
     int[] stats = new int[suffStatsCount];
 
+    String[] reference_tokens = refSentences[i][0].split("\\s+");
+    String[] source_tokens = refSentences[i][srcIndex].split("\\s+");
     String[] candidate_tokens = null;
 
     if (!cand_str.equals("")) {
       candidate_tokens = cand_str.split("\\s+");
     } else {
       candidate_tokens = new String[0];
-      stats[tokenLength(CANDIDATE)] = 0;
-      stats[tokenLength(REFERENCE)] = effLength(0, i);
     }
+
     // set the BLEU stats
-    set_prec_suffStats(stats, candidate_tokens, i);
+    int[] ref_prec_suffStats = refBLEU.suffStats(cand_str, i);
+    for (int j = 0; j < 2 * maxGramLength; j++) {
+      stats[j] = ref_prec_suffStats[j];
+    }
 
     // set source BLEU stats
     if (useBLEUplus) {
       int[] src_prec_suffStats = srcBLEU.suffStats(cand_str, i);
-      for (int j = 0; j < src_prec_suffStats.length; j++) {
+      for (int j = 0; j < 2 * maxGramLength; j++) {
         stats[2 * maxGramLength + j] = src_prec_suffStats[j];
       }
     }
 
-    // now set the readability stats
-    String[] reference_tokens = refSentences[i][0].split("\\s+");
-    String[] source_tokens = refSentences[i][srcIndex].split("\\s+");
-
     // set the number of sentences (necessary to calculate GL)
     stats[sentCountIndex] = 1;
+
     // token length
     stats[tokenLength(CANDIDATE)] = candidate_tokens.length;
     stats[tokenLength(REFERENCE)] = reference_tokens.length;
@@ -131,8 +132,7 @@ public class GradeLevelBLEU extends BLEU {
   public int countTotalSyllables(String[] ss) {
     int count = 0;
     for (String s : ss) {
-      int i = countSyllables(s);
-      count += i;
+      count += countSyllables(s);
     }
     return count;
   }
@@ -167,10 +167,16 @@ public class GradeLevelBLEU extends BLEU {
   public double score(int[] stats) {
     if (stats.length != suffStatsCount) {
       logger.severe("Mismatch between stats.length and suffStatsCount (" + stats.length + " vs. "
-          + suffStatsCount + ") in BLEU.score(int[])");
+          + suffStatsCount + ") in GL_BLEU.score(int[])");
       System.exit(2);
     }
-    double BLEUscore = super.score(stats);
+    int[] BLEUstats = new int[refBLEU.suffStatsCount];
+    for (int i = 0; i < 2 * maxGramLength; i++) {
+      BLEUstats[i] = stats[i];
+    }
+    BLEUstats[2 * maxGramLength] = stats[tokenLength(CANDIDATE)];
+    BLEUstats[2 * maxGramLength+1] = stats[tokenLength(REFERENCE)];
+    double BLEUscore = refBLEU.score(BLEUstats);
     double candGL =
         gradeLevel(stats[tokenLength(CANDIDATE)], stats[syllableLength(CANDIDATE)],
             stats[sentCountIndex]);
@@ -181,18 +187,18 @@ public class GradeLevelBLEU extends BLEU {
     } else {
       double srcGL =
           gradeLevel(stats[tokenLength(SOURCE)], stats[syllableLength(SOURCE)],
-              stats[sentCountIndex]);
+            stats[sentCountIndex]);
       readabilityPenalty = getReadabilityPenalty(candGL, srcGL);
     }
 
     if (useBLEUplus) {
-      int[] srcStats = new int[2 * maxGramLength];
+      int[] srcStats = new int[srcBLEU.suffStatsCount];
       for (int i = 0; i < 2 * maxGramLength; i++) {
         srcStats[i] = stats[2 * maxGramLength + i];
       }
       srcStats[2 * maxGramLength] = stats[tokenLength(CANDIDATE)];
-      srcStats[2 * maxGramLength] = stats[tokenLength(SOURCE)];
-      double srcBLEUscore = srcBLEU.score(stats);
+      srcStats[2 * maxGramLength + 1] = stats[tokenLength(SOURCE)];
+      double srcBLEUscore = srcBLEU.score(srcStats);
       BLEUscore = BLEU_plus(BLEUscore, srcBLEUscore);
     }
     return readabilityPenalty * BLEUscore;
@@ -216,6 +222,14 @@ public class GradeLevelBLEU extends BLEU {
     return 0.0;
   }
 
+  public double bestPossibleScore() {
+    return 1.0;
+  }
+
+  public double worstPossibleScore() {
+    return 0.0;
+  }
+
   public void printDetailedScore_fromStats(int[] stats, boolean oneLiner) {
     DecimalFormat df = new DecimalFormat("#.###");
     double source_gl =
@@ -227,8 +241,19 @@ public class GradeLevelBLEU extends BLEU {
         gradeLevel(stats[tokenLength(REFERENCE)], stats[syllableLength(REFERENCE)],
             stats[sentCountIndex]);
     double penalty = 1;
-    double bleu_ref = super.score(stats);
-    double bleu_src = srcBLEU.score(stats);
+
+    int[] BLEUstats = new int[refBLEU.suffStatsCount];
+    int[] srcStats = new int[srcBLEU.suffStatsCount];
+    for (int i = 0; i < 2*maxGramLength; i++) {
+      BLEUstats[i] = stats[i];
+      srcStats[i] = stats[2*maxGramLength+i];
+    }
+    BLEUstats[2*maxGramLength] = stats[tokenLength(CANDIDATE)];
+    BLEUstats[2*maxGramLength+1] = stats[tokenLength(REFERENCE)];
+    srcStats[2*maxGramLength] = stats[tokenLength(CANDIDATE)];
+    srcStats[2*maxGramLength+1] = stats[tokenLength(SOURCE)];
+    double bleu_ref = refBLEU.score(BLEUstats);
+    double bleu_src = srcBLEU.score(srcStats);
     double bleu_plus = BLEU_plus(bleu_ref, bleu_src);
 
     if (useTarget)
