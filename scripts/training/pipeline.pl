@@ -857,6 +857,7 @@ if ($numrefs > 1) {
 
 
 # filter the tuning grammar
+<<<<<<< HEAD
 my $TUNE_GRAMMAR = (defined $TUNE_GRAMMAR_FILE)
 	? $TUNE_GRAMMAR_FILE
 	: $GRAMMAR_FILE;
@@ -870,14 +871,28 @@ if ($DO_FILTER_TM and ! defined $TUNE_GRAMMAR_FILE) {
 				  $TUNE{source},
 				  $TUNE_GRAMMAR);
 }
+=======
+$cachepipe->cmd("filter-tune",
+				"$SCRIPTDIR/training/scat $GRAMMAR_FILE | java -Dfile.encoding=utf8 -cp $JOSHUA/lib/thrax.jar edu.jhu.thrax.util.TestSetFilter -v $TUNE{source} | $SCRIPTDIR/training/remove-unary-abstract.pl | gzip -9 > tune/grammar.filtered.gz",
+				$GRAMMAR_FILE,
+				$TUNE{source},
+				"tune/grammar.filtered.gz");
+>>>>>>> upstream/master
 
 # create the glue grammars
 if (! defined $GLUE_GRAMMAR_FILE) {
   $cachepipe->cmd("glue-tune",
+<<<<<<< HEAD
 				  "$CAT $TUNE_GRAMMAR | java -Xmx2g -cp $THRAX/bin/thrax.jar:$JOSHUA/lib/hadoop-core-0.20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar edu.jhu.thrax.util.CreateGlueGrammar $THRAX_CONF_FILE > $DATA_DIRS{tune}/grammar.glue",
 				  $TUNE_GRAMMAR,
 				  "$DATA_DIRS{tune}/grammar.glue");
   $GLUE_GRAMMAR_FILE = "$DATA_DIRS{tune}/grammar.glue";
+=======
+				  "$SCRIPTDIR/training/scat tune/grammar.filtered.gz | java -cp $JOSHUA/lib/thrax.jar:$JOSHUA/lib/hadoop-core-0.20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar edu.jhu.thrax.util.CreateGlueGrammar thrax-$GRAMMAR_TYPE.conf > tune/grammar.glue",
+				  "tune/grammar.filtered.gz",
+				  "tune/grammar.glue");
+  $GLUE_GRAMMAR_FILE = "tune/grammar.glue";
+>>>>>>> upstream/master
 } else {
   # just create a symlink to it
   my $filename = $DATA_DIRS{tune} . "/" . basename($GLUE_GRAMMAR_FILE);
@@ -1111,13 +1126,23 @@ while (<CMD>) {
 close(CMD);
 my $final_bleu = sum(@bleus) / (scalar @bleus);
 
+<<<<<<< HEAD
 open BLEU, ">$dir/final-bleu" or die "Can't write to $dir/final-bleu";
 printf(BLEU "%s / %d = %.4f\n", join(" + ", @bleus), scalar @bleus, $final_bleu);
 close(BLEU);
+=======
+# filter the test grammar
+$cachepipe->cmd("filter-test",
+				"$SCRIPTDIR/training/scat $GRAMMAR_FILE | java -Dfile.encoding=utf8 -cp $JOSHUA/lib/thrax.jar edu.jhu.thrax.util.TestSetFilter -v $TEST{source} | $SCRIPTDIR/training/remove-unary-abstract.pl | gzip -9 > test/grammar.filtered.gz",
+				$GRAMMAR_FILE,
+				$TEST{source},
+				"test/grammar.filtered.gz");
+>>>>>>> upstream/master
 
 system("cat $dir/final-bleu");
 exit;
 
+<<<<<<< HEAD
 
 # This target allows the pipeline to be used just for decoding new
 # data sets
@@ -1129,6 +1154,18 @@ system("mkdir -p $DATA_DIRS{test}") unless -d $DATA_DIRS{test};
 if (! defined $NAME) {
   print "* FATAL: for direct tests, you must specify a unique run name\n";
   exit 1;
+=======
+  $cachepipe->cmd("glue-test",
+				  "$SCRIPTDIR/training/scat test/grammar.filtered.gz | java -cp $JOSHUA/lib/thrax.jar:$JOSHUA/hadoop-core-20.203.0.jar:$JOSHUA/lib/commons-logging-1.1.1.jar edu.jhu.thrax.util.CreateGlueGrammar thrax-$GRAMMAR_TYPE.conf > test/grammar.glue",
+				  "test/grammar.filtered.gz",
+				  "test/grammar.glue");
+  $GLUE_GRAMMAR_FILE = "test/grammar.glue";
+} else {
+  $cachepipe->cmd("glue-test-copy",
+				  "cp $GLUE_GRAMMAR_FILE test/grammar.glue",
+				  $GLUE_GRAMMAR_FILE,
+				  "test/grammar.glue");
+>>>>>>> upstream/master
 }
 
 # if (-e "$DATA_DIRS{test}/$NAME") {
@@ -1367,6 +1404,37 @@ sub start_hadoop_cluster {
 sub rollout_hadoop_cluster {
   # if it's not already unpacked, unpack it
   if (! -d "hadoop") {
+<<<<<<< HEAD
+=======
+	system("tar xzf $JOSHUA/lib/hadoop-0.20.203.0rc1.tar.gz");
+	system("ln -sf hadoop-0.20.203.0 hadoop");
+
+	chomp(my $hostname = `hostname -f`);
+
+	# copy configuration files
+	foreach my $file (qw/core-site.xml mapred-site.xml hdfs-site.xml/) {
+	  open READ, "$JOSHUA/scripts/training/templates/hadoop/$file" or die $file;
+	  open WRITE, ">", "hadoop/conf/$file" or die "write $file";
+	  while (<READ>) {
+		s/<HADOOP-TMP-DIR>/$RUNDIR\/hadoop\/tmp/g;
+		s/<HOST>/$hostname/g;
+		s/<PORT1>/9000/g;
+		s/<PORT2>/9001/g;
+		s/<MAX-MAP-TASKS>/2/g;
+		s/<MAX-REDUCE-TASKS>/2/g;
+
+		print WRITE;
+	  }
+	  close WRITE;
+	  close READ;
+	}
+
+	system("echo $hostname > hadoop/conf/masters");
+	system("echo $hostname > hadoop/conf/slaves");
+  system("echo export JAVA_HOME=$ENV{JAVA_HOME} >> hadoop/conf/hadoop-env.sh");
+
+  } else {
+>>>>>>> upstream/master
 
 	system("tar xzf $JOSHUA/lib/hadoop-0.20.2.tar.gz");
 	system("ln -sf hadoop-0.20.2 hadoop");
